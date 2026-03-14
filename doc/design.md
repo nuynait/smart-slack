@@ -61,10 +61,8 @@ SmartSlack/
 │   ├── ScheduleDetailView.swift     # Full detail: header, session, conversation
 │   ├── DraftView.swift              # Send/Rewrite/Ignore actions
 │   ├── DraftHistoryView.swift       # Previous drafts with send fallback
-│   ├── AddScheduleView.swift        # Create from channel browser
-│   ├── AddScheduleFromLinkView.swift # Create from Slack message link
+│   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link
 │   ├── EditScheduleView.swift       # Edit schedule properties
-│   ├── ChannelPickerView.swift      # Searchable, starrable channel list
 │   ├── IntervalPickerView.swift     # Preset buttons + adaptive slider
 │   ├── HistoryView.swift            # Paginated session history window
 │   ├── LogViewerView.swift          # Filterable log viewer window with auto-scroll

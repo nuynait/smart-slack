@@ -4,7 +4,6 @@ struct MainView: View {
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
     @State private var selectedScheduleId: UUID?
-    @State private var showAddSheet = false
     @State private var showAddFromLinkSheet = false
 
     var body: some View {
@@ -24,19 +23,12 @@ struct MainView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Browse Channels") {
-                        showAddSheet = true
-                    }
-                    .keyboardShortcut("n", modifiers: .command)
-
-                    Button("From Message Link") {
-                        showAddFromLinkSheet = true
-                    }
-                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button {
+                    showAddFromLinkSheet = true
                 } label: {
                     Image(systemName: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -68,9 +60,6 @@ struct MainView: View {
                     Image(systemName: "ellipsis.circle")
                 }
             }
-        }
-        .sheet(isPresented: $showAddSheet) {
-            AddScheduleView()
         }
         .sheet(isPresented: $showAddFromLinkSheet) {
             AddScheduleFromLinkView()

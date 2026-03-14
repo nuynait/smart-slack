@@ -62,9 +62,7 @@ Launch SmartSlack, paste your token, and click **Connect**. The app validates ag
 
 ### Creating a Schedule
 
-**From channel browser:** Click `+` > **Browse Channels**, pick the type (Channel/Thread/DM/Group DM), select a channel, set the check interval and prompt.
-
-**From message link:** Click `+` > **From Message Link**, paste a Slack message URL. The app auto-detects the channel, type, and thread. Just add a name, interval, and prompt.
+Click `+` and paste a Slack message URL. The app auto-detects the channel, type, and thread. Just add a name, check interval, and prompt.
 
 ### Prompt Tips
 
