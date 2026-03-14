@@ -71,6 +71,29 @@ struct ScheduleDetailView: View {
         .sheet(isPresented: $showEditSheet) {
             EditScheduleView(schedule: schedule)
         }
+        .task(id: schedule.id) {
+            resolveAllUserNames()
+        }
+        .onChange(of: schedule.sessions.count) { _, _ in
+            resolveAllUserNames()
+        }
+        .onChange(of: schedule.pendingMessages.count) { _, _ in
+            resolveAllUserNames()
+        }
+    }
+
+    private func resolveAllUserNames() {
+        let messages = conversationMessages
+        var allUserIds = messages.compactMap(\.user)
+        // Also resolve user IDs mentioned in message text (<@USERID>)
+        let mentionPattern = /<@(U[A-Z0-9]+)>/
+        for msg in messages {
+            guard let text = msg.text else { continue }
+            for match in text.matches(of: mentionPattern) {
+                allUserIds.append(String(match.1))
+            }
+        }
+        appVM.resolveUserNames(ids: allUserIds)
     }
 
     // MARK: - Header
@@ -231,10 +254,6 @@ struct ScheduleDetailView: View {
                         userColorPicker(userId: userId)
                     }
                 }
-                .onAppear {
-                    let userIds = messages.compactMap(\.user)
-                    appVM.resolveUserNames(ids: userIds)
-                }
             }
         }
     }
@@ -280,7 +299,7 @@ struct ScheduleDetailView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(message.text ?? "")
+                richMessageText(message.text ?? "")
                     .font(isLatest ? .body : .callout)
                     .foregroundStyle(isOwner ? Color.primary.opacity(0.7) : (isLatest ? Color.primary : Color.secondary))
                     .textSelection(.enabled)
@@ -351,6 +370,28 @@ struct ScheduleDetailView: View {
             Rectangle().frame(height: 1).foregroundStyle(.orange.opacity(0.5))
         }
         .padding(.vertical, 6)
+    }
+
+    private func richMessageText(_ raw: String) -> Text {
+        let mentionPattern = /<@(U[A-Z0-9]+)>/
+        var result = Text("")
+        var remaining = raw[...]
+
+        while let match = remaining.firstMatch(of: mentionPattern) {
+            let before = remaining[remaining.startIndex..<match.range.lowerBound]
+            if !before.isEmpty {
+                result = result + Text(before)
+            }
+            let mentionedId = String(match.1)
+            let name = "@\(appVM.displayName(for: mentionedId))"
+            let color = mentionedId == appVM.slackUserId ? Color.primary : userColorStore.color(for: mentionedId)
+            result = result + Text(name).bold().foregroundColor(color)
+            remaining = remaining[match.range.upperBound...]
+        }
+        if !remaining.isEmpty {
+            result = result + Text(remaining)
+        }
+        return result
     }
 
     private func sectionHeader(_ title: String, icon: String) -> some View {
