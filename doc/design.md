@@ -97,7 +97,8 @@ Schedule
 ├── lastRun: Date?              # When the schedule last executed
 ├── lastMessageTs: String?      # Slack timestamp of last processed message
 ├── sessions: [Session]         # All Claude analysis sessions
-└── pendingMessages: [SlackMessage]  # Owner messages waiting for next Claude session
+├── pendingMessages: [SlackMessage]  # Owner messages waiting for next Claude session
+└── initialMessageCount: Int   # Max messages to include on first fetch (default 5)
 ```
 
 ### Session
@@ -218,15 +219,16 @@ Manages the execution lifecycle of all schedules.
 1. Guard: skip if schedule is already running (prevents concurrent execution)
 2. Fetch new messages from Slack (uses `conversationsHistory` or `conversationsReplies` depending on schedule type)
 3. Filter to only messages newer than `lastMessageTs`
-4. If no new messages → update `lastRun`, return
-5. If all new messages are from owner → store in `pendingMessages`, advance `lastMessageTs`, return (skip Claude)
-6. Merge `pendingMessages` with new messages for full context
-7. Download images from messages to temp directory
-8. Call `ClaudeService.analyze()` with all messages + image paths
-9. Log the prompt sent and response received
-10. Create a `Session` with messages, summary, draft
-11. Update schedule: set `lastRun`, advance `lastMessageTs`, clear `pendingMessages`, append session
-12. On error: mark schedule as `.failed`, stop timer
+4. On first fetch (`lastMessageTs` is nil), limit to `initialMessageCount` most recent messages
+5. If no new messages → update `lastRun`, return
+6. If all new messages are from owner → store in `pendingMessages`, advance `lastMessageTs`, return (skip Claude)
+7. Merge `pendingMessages` with new messages for full context
+8. Download images from messages to temp directory
+9. Call `ClaudeService.analyze()` with all messages + image paths
+10. Log the prompt sent and response received
+11. Create a `Session` with messages, summary, draft
+12. Update schedule: set `lastRun`, advance `lastMessageTs`, clear `pendingMessages`, append session
+13. On error: mark schedule as `.failed`, stop timer
 
 **Owner message handling:**
 - Messages from the token owner are detected by comparing `message.user` to the stored `ownerUserId`
@@ -393,6 +395,8 @@ countdown[id] -= 1
        ▼
      Fetch messages from Slack
        │
+       ├─ First fetch? Limit to initialMessageCount most recent
+       │
        ├─ No new messages → update lastRun, reset countdown
        │
        ├─ All from owner → store in pendingMessages, advance lastMessageTs, reset countdown
@@ -462,7 +466,11 @@ All models use `JSONEncoder.slackEncoder` / `JSONDecoder.slackDecoder`:
 
 ### Backward Compatibility
 
-`Schedule.init(from:)` provides a custom decoder that defaults `pendingMessages` to `[]` if the field is missing. This ensures old JSON files (created before the pendingMessages feature) load without errors.
+`Schedule.init(from:)` provides a custom decoder that defaults optional fields if missing from JSON:
+- `pendingMessages` defaults to `[]`
+- `initialMessageCount` defaults to `5`
+
+This ensures old JSON files load without errors.
 
 ### File Watching
 

@@ -10,6 +10,7 @@ struct AddScheduleFromLinkView: View {
     @State private var name = ""
     @State private var intervalSeconds: Double = 300
     @State private var prompt = ""
+    @State private var initialMessageCount = 5
     @State private var error: String?
     @State private var isResolving = false
     @State private var resolved: ResolvedLink?
@@ -83,6 +84,21 @@ struct AddScheduleFromLinkView: View {
 
                     IntervalPickerView(intervalSeconds: $intervalSeconds)
                         .formCard()
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Initial Message Count")
+                            .font(.headline)
+                        Text("How many recent messages to include on the first check")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $initialMessageCount) {
+                            ForEach([1, 5, 10, 15, 20, 25, 30], id: \.self) { count in
+                                Text("\(count)").tag(count)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .formCard()
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Prompt")
@@ -241,7 +257,8 @@ struct AddScheduleFromLinkView: View {
             createdAt: Date(),
             lastRun: nil,
             lastMessageTs: nil,
-            sessions: []
+            sessions: [],
+            initialMessageCount: initialMessageCount
         )
 
         scheduleStore.saveSchedule(schedule)

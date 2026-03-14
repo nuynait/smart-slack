@@ -121,6 +121,7 @@ final class SchedulerEngine: ObservableObject {
 
         do {
             // Fetch messages
+            let isFirstFetch = schedule.lastMessageTs == nil
             let messages: [SlackMessage]
             if schedule.type == .thread, let threadTs = schedule.threadTs {
                 messages = try await slackService.conversationsReplies(
@@ -136,12 +137,18 @@ final class SchedulerEngine: ObservableObject {
             }
 
             // Filter out messages we've already seen
-            let newMessages = schedule.lastMessageTs != nil
+            var newMessages = schedule.lastMessageTs != nil
                 ? messages.filter { msg in
                     guard let ts = msg.ts, let lastTs = schedule.lastMessageTs else { return true }
                     return ts > lastTs
                 }
                 : messages
+
+            // On first fetch, limit to initialMessageCount most recent messages.
+            // Subsequent fetches use lastMessageTs so they only get new messages.
+            if isFirstFetch && newMessages.count > schedule.initialMessageCount {
+                newMessages = Array(newMessages.prefix(schedule.initialMessageCount))
+            }
 
             guard !newMessages.isEmpty else {
                 logService.log(.verbose, scheduleId: schedule.id, sessionId: sessionId, message: "No new messages")

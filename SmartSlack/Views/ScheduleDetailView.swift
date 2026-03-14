@@ -125,6 +125,14 @@ struct ScheduleDetailView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
+                Label("Initial: \(schedule.initialMessageCount)", systemImage: "number")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Label("Created: \(schedule.createdAt.formatted(date: .abbreviated, time: .shortened))", systemImage: "calendar")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
                 if let lastRun = schedule.lastRun {
                     Label("Last run: \(lastRun.relativeFormatted)", systemImage: "arrow.clockwise")
                         .font(.subheadline)

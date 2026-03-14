@@ -54,13 +54,14 @@ struct Schedule: Codable, Identifiable, Hashable {
     var lastMessageTs: String?
     var sessions: [Session]
     var pendingMessages: [SlackMessage]
+    var initialMessageCount: Int
 
     /// Latest session that was processed by Claude (has a summary).
     var latestSession: Session? {
         sessions.last(where: { $0.summary != nil })
     }
 
-    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = []) {
+    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5) {
         self.id = id
         self.name = name
         self.type = type
@@ -75,6 +76,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         self.lastMessageTs = lastMessageTs
         self.sessions = sessions
         self.pendingMessages = pendingMessages
+        self.initialMessageCount = initialMessageCount
     }
 
     init(from decoder: Decoder) throws {
@@ -93,5 +95,6 @@ struct Schedule: Codable, Identifiable, Hashable {
         lastMessageTs = try container.decodeIfPresent(String.self, forKey: .lastMessageTs)
         sessions = try container.decode([Session].self, forKey: .sessions)
         pendingMessages = try container.decodeIfPresent([SlackMessage].self, forKey: .pendingMessages) ?? []
+        initialMessageCount = try container.decodeIfPresent(Int.self, forKey: .initialMessageCount) ?? 5
     }
 }
