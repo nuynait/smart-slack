@@ -39,7 +39,17 @@ final class LogService: ObservableObject {
     /// Max size per log file (1 MB)
     static let maxLogFileSize: UInt64 = 1_024 * 1_024
 
+    /// Compact (single-line) encoder for NDJSON log files
+    private static let logEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
+
     init() {
+        cleanupLegacyLogFiles()
         loadAllLogs()
     }
 
@@ -117,11 +127,30 @@ final class LogService: ObservableObject {
 
     private func readLogFile(_ file: URL) -> [LogEntry] {
         guard let content = try? String(contentsOf: file, encoding: .utf8) else { return [] }
-        let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
         var entries: [LogEntry] = []
-        for line in lines {
-            if let data = line.data(using: .utf8),
-               let entry = try? JSONDecoder.slackDecoder.decode(LogEntry.self, from: data) {
+        let decoder = JSONDecoder.slackDecoder
+
+        // Try NDJSON first (compact, one entry per line)
+        let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
+        if let first = lines.first, first.hasPrefix("{") && first.hasSuffix("}") {
+            for line in lines {
+                if let data = line.data(using: .utf8),
+                   let entry = try? decoder.decode(LogEntry.self, from: data) {
+                    entries.append(entry)
+                }
+            }
+            if !entries.isEmpty { return entries }
+        }
+
+        // Fallback: split pretty-printed JSON objects on "}\n{" boundaries
+        let chunks = content.components(separatedBy: "}\n{")
+        for (index, chunk) in chunks.enumerated() {
+            var json = chunk
+            if index > 0 { json = "{" + json }
+            if index < chunks.count - 1 { json = json + "}" }
+            json = json.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let data = json.data(using: .utf8),
+               let entry = try? decoder.decode(LogEntry.self, from: data) {
                 entries.append(entry)
             }
         }
@@ -132,7 +161,7 @@ final class LogService: ObservableObject {
         let file = logFile(for: entry.scheduleId)
 
         do {
-            let data = try JSONEncoder.slackEncoder.encode(entry)
+            let data = try Self.logEncoder.encode(entry)
             let line = String(data: data, encoding: .utf8)! + "\n"
             let fm = FileManager.default
 
@@ -164,5 +193,33 @@ final class LogService: ObservableObject {
         let kept = Array(lines.suffix(keepCount))
         let newContent = kept.joined(separator: "\n") + "\n"
         try? newContent.write(to: file, atomically: true, encoding: .utf8)
+    }
+
+    /// Remove old per-session log files ({scheduleId}_{sessionId}.log) and
+    /// migrate any pretty-printed log files to compact NDJSON.
+    private func cleanupLegacyLogFiles() {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: logsDir, includingPropertiesForKeys: nil) else { return }
+
+        for file in files where file.pathExtension == "log" {
+            let name = file.deletingPathExtension().lastPathComponent
+            // Old format: {scheduleId}_{sessionId}.log — contains an underscore
+            if name.contains("_") {
+                try? fm.removeItem(at: file)
+                continue
+            }
+            // Migrate pretty-printed files to compact NDJSON
+            if let content = try? String(contentsOf: file, encoding: .utf8),
+               content.hasPrefix("{\n") {
+                let entries = readLogFile(file)
+                guard !entries.isEmpty else { continue }
+                let compactLines = entries.compactMap { entry -> String? in
+                    guard let data = try? Self.logEncoder.encode(entry) else { return nil }
+                    return String(data: data, encoding: .utf8)
+                }
+                let newContent = compactLines.joined(separator: "\n") + "\n"
+                try? newContent.write(to: file, atomically: true, encoding: .utf8)
+            }
+        }
     }
 }

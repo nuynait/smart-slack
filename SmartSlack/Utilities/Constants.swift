@@ -14,6 +14,12 @@ enum Constants {
         return url
     }()
 
+    static let claudeOutputDir: URL = {
+        let url = appSupportDir.appendingPathComponent("claude_output")
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+
     static let logsDir: URL = {
         let url = appSupportDir.appendingPathComponent("logs")
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

@@ -47,9 +47,13 @@ struct MainView: View {
                     .keyboardShortcut("h", modifiers: [.command, .shift])
 
                     Button("Log Viewer") {
-                        openLogViewer()
+                        if let id = selectedScheduleId,
+                           let schedule = scheduleStore.schedule(byId: id) {
+                            openLogViewer(scheduleId: id, name: schedule.name)
+                        }
                     }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .disabled(selectedScheduleId == nil)
 
                     Divider()
 
@@ -83,13 +87,12 @@ struct MainView: View {
         window.makeKeyAndOrderFront(nil)
     }
 
-    private func openLogViewer() {
-        let logView = LogViewerView()
+    private func openLogViewer(scheduleId: UUID, name: String) {
+        let logView = LogViewerView(scheduleId: scheduleId, scheduleName: name)
             .environmentObject(appVM.logService)
-            .environmentObject(appVM.scheduleStore)
         let controller = NSHostingController(rootView: logView)
         let window = NSWindow(contentViewController: controller)
-        window.title = "SmartSlack Logs"
+        window.title = "Logs — \(name)"
         window.setContentSize(NSSize(width: 700, height: 500))
         window.makeKeyAndOrderFront(nil)
     }

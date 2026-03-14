@@ -67,7 +67,8 @@ SmartSlack/
 │   ├── ChannelPickerView.swift      # Searchable, starrable channel list
 │   ├── IntervalPickerView.swift     # Preset buttons + adaptive slider
 │   ├── HistoryView.swift            # Paginated session history window
-│   ├── LogViewerView.swift          # Filterable log viewer window
+│   ├── LogViewerView.swift          # Filterable log viewer window with auto-scroll
+│   ├── MarkdownView.swift           # Markdown renderer for Claude summaries
 │   └── SlackImageView.swift         # Async Slack image downloader + preview
 │
 └── Utilities/
@@ -168,24 +169,38 @@ All requests use `Authorization: Bearer <token>` header. JSON responses decoded 
 Invokes Claude Code CLI as a subprocess.
 
 **Methods:**
-- `analyze(messages:, prompt:, channelName:, ownerUserId:, ownerDisplayName:, imagePaths:)` → `AnalysisResult`
-- `rewrite(messages:, allSummaries:, draftHistory:, originalPrompt:, rewritePrompt:, channelName:, ownerUserId:, ownerDisplayName:, imagePaths:)` → `AnalysisResult`
+- `analyze(messages:, prompt:, channelName:, scheduleId:, ownerUserId:, ownerDisplayName:, imagePaths:, userNames:)` → `AnalysisResult`
+- `rewrite(messages:, allSummaries:, draftHistory:, originalPrompt:, rewritePrompt:, channelName:, scheduleId:, ownerUserId:, ownerDisplayName:, imagePaths:, userNames:)` → `AnalysisResult`
+- `cleanupOutput(for:)` — deletes output directory for a schedule
 
-**How it works:**
+**How it works (file-based output):**
 1. Builds a text prompt with message history, owner context, image references, and user instructions
-2. Spawns `claude --print --output-format text` as a `Process`
-3. Writes prompt to stdin, closes stdin
-4. Waits for process to exit
-5. Parses stdout for JSON: `{"summary": "...", "draft_reply": "..."}`
-6. Returns `AnalysisResult` with summary, draft, raw prompt, and raw response
+2. Creates output directory: `~/Library/Application Support/SmartSlack/claude_output/{scheduleId}/`
+3. Clears any previous `summary.md` and `draft.txt` from the output directory
+4. Instructs Claude to write two files:
+   - `summary.md` — markdown-formatted summary of the conversation
+   - `draft.txt` — plain text draft reply for Slack
+5. Spawns `claude --print --output-format text --allowedTools Write` as a `Process`
+6. Writes prompt to stdin, closes stdin
+7. Waits for process to exit
+8. Reads `summary.md` and `draft.txt` from the output directory
+9. Returns `AnalysisResult` with summary, draft, raw prompt, and raw stdout
+
+**Why file-based output:** Previous approach asked Claude to output JSON with summary and draft_reply fields. This broke when markdown summaries contained characters that made JSON parsing unreliable (curly braces, newlines, special characters). Writing to separate files eliminates all parsing issues.
+
+**User name resolution:** Before calling Claude, the `SchedulerEngine` resolves all user IDs to display names:
+- Message author IDs are resolved via `SlackService.usersInfo()`
+- `<@USERID>` mentions in message text are replaced with `@displayName`
+- Resolved names are cached in `AppViewModel.userNameCache` and passed via `userNames` parameter
+- This ensures Claude sees human-readable names, not raw Slack user IDs
 
 **Owner context:** When owner info is available, the prompt tells Claude:
 - Who the owner is (name + user ID)
-- That messages from the owner's user ID are their own
+- That messages from the owner are their own
 - To write in first person as the owner
 - Not to repeat/contradict the owner's previous messages
 
-**Important:** Uses `--print` mode (stateless, no conversation history in Claude). Each call is independent.
+**Important:** Uses `--print` mode (stateless, no conversation history in Claude). The `--allowedTools Write` flag grants Claude the Write tool to create output files. Each call is independent.
 
 ### SchedulerEngine (ObservableObject, @MainActor)
 
@@ -235,16 +250,27 @@ Each schedule is a separate JSON file. Uses `JSONEncoder.slackEncoder` (snake_ca
 
 ### LogService (ObservableObject)
 
-**Storage:** `~/Library/Application Support/SmartSlack/logs/{scheduleId}_{sessionId}.log`
+**Storage:** `~/Library/Application Support/SmartSlack/logs/{scheduleId}.log` (one file per schedule)
 
-Each log file contains newline-delimited JSON entries. Each entry has: id, timestamp, scheduleId, sessionId, level, message.
+Each log file contains compact NDJSON (newline-delimited JSON) entries. Each entry has: id, timestamp, scheduleId, sessionId, level, message. Uses a dedicated compact encoder (no pretty-printing) to ensure one JSON object per line.
 
-Log levels: `info`, `warning`, `error`
+**Log levels:** `verbose`, `info`, `warning`, `error` (ordered by severity, `Comparable`)
+
+**Max file size:** 1 MB per log file. When exceeded, the file is truncated to keep the newest half of entries.
+
+**Persistence:** Logs are loaded from disk on init and persist across app restarts. The log viewer loads all logs on appear.
+
+**Cleanup:**
+- `clearLogs(for:)` — deletes log file and in-memory entries for one schedule
+- `clearAllLogs()` — clears everything
+- `deleteLogsForSchedule()` — called when a schedule is deleted (along with `ClaudeService.cleanupOutput`)
+- On init, legacy per-session log files (`{scheduleId}_{sessionId}.log`) are deleted and pretty-printed files are migrated to compact NDJSON
 
 Key events logged:
 - Schedule start/stop
-- Message fetch results
+- Message fetch results (verbose level)
 - Owner-only skip decisions
+- User name resolution
 - Image download counts
 - Full Claude prompt and response
 - Errors and failures
@@ -329,9 +355,26 @@ Four styles defined in Extensions.swift:
 - **DestructiveButtonStyle** — soft red tint, red text
 - **SmallSecondaryButtonStyle** — compact version for inline contexts
 
+### MarkdownView
+
+Custom view that renders markdown text with proper formatting:
+- Parses blocks: headings (H1-H3), bullet lists, numbered lists, paragraphs
+- Renders inline markdown (bold, italic, code, links) via `AttributedString(markdown:)`
+- Used for displaying Claude's markdown-formatted summaries
+
+### Log Viewer (LogViewerView)
+
+Opens in a separate `NSWindow`. Features:
+- **Level filter:** Minimum severity filter (verbose/info/warning/error), defaults to `info`
+- **Schedule filter:** Filter by schedule name, shows only schedules with existing logs
+- **Auto-scroll toggle:** When enabled, view automatically scrolls to the latest entry as new logs arrive. Manual scrolling disables auto-scroll. Toggle button in toolbar.
+- **Clear buttons:** Clear logs for filtered schedule, or clear all
+- **Reload button:** Reloads all logs from disk
+- Shows timestamp, level, schedule name, and message per entry
+
 ### Separate Windows
 
-History and Log Viewer open in separate `NSWindow` instances (created programmatically in MainView) rather than sheets or navigation destinations.
+History and Log Viewer open in separate `NSWindow` instances (created programmatically in MainView) rather than sheets or navigation destinations. Environment objects must be explicitly injected when creating these windows (they don't inherit from the main window hierarchy).
 
 ---
 
@@ -438,11 +481,13 @@ Both trigger `loadSchedules()` which re-reads all JSON files from disk.
 ### Claude CLI Integration
 
 - Path: `/opt/homebrew/bin/claude`
-- Arguments: `["--print", "--output-format", "text"]`
+- Arguments: `["--print", "--output-format", "text", "--allowedTools", "Write"]`
 - Input: prompt written to stdin, then stdin closed
-- Output: stdout parsed for JSON
+- Output: Claude writes `summary.md` and `draft.txt` to `~/Library/Application Support/SmartSlack/claude_output/{scheduleId}/`
 - Mode: stateless (`--print`), no conversation history saved
+- The `--allowedTools Write` flag grants Claude the Write tool to create output files
 - The `--file` flag is NOT used (requires session token). Images are referenced in prompt text only.
+- User names are resolved before calling Claude — all `<@USERID>` mentions and message authors are replaced with display names
 
 ### Slack API Considerations
 
@@ -492,5 +537,6 @@ Both trigger `loadSchedules()` which re-reads all JSON files from disk.
 ### Modifying the Claude prompt
 
 1. Edit `ClaudeService.swift` — `analyze()` for monitoring, `rewrite()` for rewrites
-2. The prompt structure: system context → owner context → messages → image references → user instructions → output format
-3. Always request JSON output with `summary` and `draft_reply` fields
+2. The prompt structure: system context → owner context → messages → image references → user instructions → file write instructions
+3. Claude is instructed to write `summary.md` (markdown) and `draft.txt` (plain text) to the schedule's output directory
+4. Output paths are absolute paths passed in the prompt — Claude uses the Write tool to create them

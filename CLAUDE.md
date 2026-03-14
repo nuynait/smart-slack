@@ -28,7 +28,7 @@ See `doc/design.md` for detailed system design, data models, execution flows, an
 - macOS Form layout: use `ScrollView` + `VStack` + `.formCard()` modifier, NOT SwiftUI `Form` (causes half-width issues on macOS)
 - Buttons: use custom styles `.primary`, `.secondary`, `.destructive`, `.smallSecondary` defined in Extensions.swift
 - Slack API: actor-based `SlackService` with snake_case JSON decoding
-- Claude CLI: `claude --print --output-format text` via `Process`, prompt on stdin, parse JSON from stdout
+- Claude CLI: `claude --print --output-format text --allowedTools Write` via `Process`, prompt on stdin, Claude writes `summary.md` and `draft.txt` to `claude_output/{scheduleId}/`
 - File persistence: individual JSON files per schedule in `~/Library/Application Support/SmartSlack/schedules/`
 - New files: always run `xcodegen generate` after creating new `.swift` files
 

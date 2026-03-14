@@ -77,6 +77,7 @@ struct EditScheduleView: View {
                 Button("Delete") {
                     schedulerEngine.stopSchedule(schedule.id)
                     logService.deleteLogsForSchedule(schedule.id)
+                    ClaudeService.cleanupOutput(for: schedule.id)
                     scheduleStore.deleteSchedule(schedule)
                     dismiss()
                 }

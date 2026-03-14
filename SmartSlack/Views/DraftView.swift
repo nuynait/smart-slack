@@ -132,6 +132,7 @@ struct DraftView: View {
                 originalPrompt: schedule.prompt,
                 rewritePrompt: rewritePrompt,
                 channelName: schedule.channelName,
+                scheduleId: schedule.id,
                 ownerUserId: appVM.slackUserId,
                 ownerDisplayName: appVM.slackUserDisplayName,
                 userNames: appVM.userNameCache

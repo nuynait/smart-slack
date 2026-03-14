@@ -186,6 +186,7 @@ final class SchedulerEngine: ObservableObject {
                 messages: allMessages,
                 prompt: schedule.prompt,
                 channelName: schedule.channelName,
+                scheduleId: schedule.id,
                 ownerUserId: ownerUserId,
                 ownerDisplayName: ownerDisplayName,
                 imagePaths: imagePaths,

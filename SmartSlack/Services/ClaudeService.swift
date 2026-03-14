@@ -8,10 +8,15 @@ struct AnalysisResult {
 }
 
 enum ClaudeService {
-    static func analyze(messages: [SlackMessage], prompt: String, channelName: String, ownerUserId: String? = nil, ownerDisplayName: String? = nil, imagePaths: [String] = [], userNames: [String: String] = [:]) async throws -> AnalysisResult {
+    private static let outputDir = Constants.claudeOutputDir
+
+    static func analyze(messages: [SlackMessage], prompt: String, channelName: String, scheduleId: UUID, ownerUserId: String? = nil, ownerDisplayName: String? = nil, imagePaths: [String] = [], userNames: [String: String] = [:]) async throws -> AnalysisResult {
         let messagesText = formatMessages(messages, userNames: userNames)
         let ownerContext = ownerIdentityContext(userId: ownerUserId, displayName: ownerDisplayName)
         let imageContext = imagePaths.isEmpty ? "" : "\n\nThe following images were attached to the messages. They have been provided as files for you to view:\n" + imagePaths.map { "- \($0)" }.joined(separator: "\n")
+        let dir = prepareOutputDir(for: scheduleId)
+        let summaryPath = dir.appendingPathComponent("summary.md").path
+        let draftPath = dir.appendingPathComponent("draft.txt").path
         let fullPrompt = """
         You are monitoring a Slack channel/conversation called "\(channelName)".
         \(ownerContext)
@@ -21,15 +26,19 @@ enum ClaudeService {
 
         User instructions: \(prompt)
 
-        Based on the messages and instructions above, provide your response as a JSON object with exactly two fields:
-        - "summary": a brief summary of what was discussed in the new messages, formatted in markdown (use headers, bullet points, bold, etc. as appropriate for readability)
-        - "draft_reply": your suggested reply based on the user's instructions. Write the reply as if you are the owner speaking.
+        Based on the messages and instructions above, you MUST write exactly two files:
 
-        Respond ONLY with valid JSON, no markdown fences or extra text:
-        {"summary": "...", "draft_reply": "..."}
+        1. Write a brief summary of what was discussed to: \(summaryPath)
+           - Use markdown formatting (headers, bullet points, bold, etc.) for readability
+
+        2. Write your suggested reply to: \(draftPath)
+           - Write the reply as if you are the owner speaking
+           - Plain text only, this will be sent as a Slack message
+
+        Write BOTH files now. Do not output anything else.
         """
 
-        return try await runClaude(prompt: fullPrompt, rawPrompt: fullPrompt, imagePaths: imagePaths)
+        return try await runClaude(prompt: fullPrompt, scheduleId: scheduleId)
     }
 
     static func rewrite(
@@ -39,6 +48,7 @@ enum ClaudeService {
         originalPrompt: String,
         rewritePrompt: String,
         channelName: String,
+        scheduleId: UUID,
         ownerUserId: String? = nil,
         ownerDisplayName: String? = nil,
         imagePaths: [String] = [],
@@ -55,6 +65,9 @@ enum ClaudeService {
             }
             return line
         }.joined(separator: "\n")
+        let dir = prepareOutputDir(for: scheduleId)
+        let summaryPath = dir.appendingPathComponent("summary.md").path
+        let draftPath = dir.appendingPathComponent("draft.txt").path
 
         let fullPrompt = """
         You are monitoring a Slack channel/conversation called "\(channelName)".
@@ -73,18 +86,38 @@ enum ClaudeService {
 
         The user wants you to rewrite the draft. Their feedback: \(rewritePrompt)
 
-        Provide your response as a JSON object with exactly two fields:
-        - "summary": an updated summary, formatted in markdown (use headers, bullet points, bold, etc. as appropriate for readability)
-        - "draft_reply": a new draft reply incorporating the user's feedback. Write the reply as if you are the owner speaking.
+        You MUST write exactly two files:
 
-        Respond ONLY with valid JSON, no markdown fences or extra text:
-        {"summary": "...", "draft_reply": "..."}
+        1. Write an updated summary to: \(summaryPath)
+           - Use markdown formatting (headers, bullet points, bold, etc.) for readability
+
+        2. Write a new draft reply incorporating the user's feedback to: \(draftPath)
+           - Write the reply as if you are the owner speaking
+           - Plain text only, this will be sent as a Slack message
+
+        Write BOTH files now. Do not output anything else.
         """
 
-        return try await runClaude(prompt: fullPrompt, rawPrompt: fullPrompt, imagePaths: imagePaths)
+        return try await runClaude(prompt: fullPrompt, scheduleId: scheduleId)
+    }
+
+    static func cleanupOutput(for scheduleId: UUID) {
+        let dir = outputDir.appendingPathComponent(scheduleId.uuidString)
+        try? FileManager.default.removeItem(at: dir)
     }
 
     // MARK: - Internal
+
+    private static func prepareOutputDir(for scheduleId: UUID) -> URL {
+        let dir = outputDir.appendingPathComponent(scheduleId.uuidString)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Clear previous output
+        let summaryFile = dir.appendingPathComponent("summary.md")
+        let draftFile = dir.appendingPathComponent("draft.txt")
+        try? FileManager.default.removeItem(at: summaryFile)
+        try? FileManager.default.removeItem(at: draftFile)
+        return dir
+    }
 
     private static func ownerIdentityContext(userId: String?, displayName: String?) -> String {
         guard let userId else { return "" }
@@ -92,7 +125,7 @@ enum ClaudeService {
         return """
 
         IMPORTANT: You are drafting replies on behalf of "\(name)" (Slack user ID: \(userId)).
-        Messages from <\(userId)> are from the owner — these may be messages the owner sent manually or replies drafted by a previous session of this tool.
+        Messages from \(name) are from the owner — these may be messages the owner sent manually or replies drafted by a previous session of this tool.
         When writing a draft reply, write in the first person as \(name). Consider what the owner has already said so you don't repeat or contradict their previous messages.
         """
     }
@@ -120,7 +153,9 @@ enum ClaudeService {
         }.joined(separator: "\n")
     }
 
-    private static func runClaude(prompt: String, rawPrompt: String, imagePaths: [String] = []) async throws -> AnalysisResult {
+    private static func runClaude(prompt: String, scheduleId: UUID) async throws -> AnalysisResult {
+        let dir = outputDir.appendingPathComponent(scheduleId.uuidString)
+
         let result: (status: Int32, stdout: String, stderr: String) = await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
@@ -129,7 +164,7 @@ enum ClaudeService {
                 let stdinPipe = Pipe()
 
                 process.executableURL = URL(fileURLWithPath: Constants.claudePath)
-                process.arguments = ["--print", "--output-format", "text"]
+                process.arguments = ["--print", "--output-format", "text", "--allowedTools", "Write"]
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
                 process.standardInput = stdinPipe
@@ -158,33 +193,21 @@ enum ClaudeService {
             throw ClaudeError.processError("Claude exited with status \(result.status): \(result.stderr)")
         }
 
-        let output = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return try parseResult(output, promptSent: rawPrompt)
-    }
+        // Read the files Claude wrote
+        let summaryFile = dir.appendingPathComponent("summary.md")
+        let draftFile = dir.appendingPathComponent("draft.txt")
 
-    private static func parseResult(_ output: String, promptSent: String) throws -> AnalysisResult {
-        // Try to extract JSON from the output, handling potential markdown fences
-        var jsonString = output
-        if let startRange = output.range(of: "{"),
-           let endRange = output.range(of: "}", options: .backwards),
-           startRange.lowerBound < endRange.upperBound {
-            jsonString = String(output[startRange.lowerBound..<endRange.upperBound])
+        guard FileManager.default.fileExists(atPath: summaryFile.path) else {
+            throw ClaudeError.parseError("Claude did not write summary.md")
+        }
+        guard FileManager.default.fileExists(atPath: draftFile.path) else {
+            throw ClaudeError.parseError("Claude did not write draft.txt")
         }
 
-        guard let data = jsonString.data(using: .utf8) else {
-            throw ClaudeError.parseError("Could not convert output to data")
-        }
+        let summary = try String(contentsOf: summaryFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        let draftReply = try String(contentsOf: draftFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ClaudeError.parseError("Output is not a JSON object")
-        }
-
-        guard let summary = json["summary"] as? String,
-              let draftReply = json["draft_reply"] as? String else {
-            throw ClaudeError.parseError("Missing 'summary' or 'draft_reply' fields")
-        }
-
-        return AnalysisResult(summary: summary, draftReply: draftReply, promptSent: promptSent, rawResponse: output)
+        return AnalysisResult(summary: summary, draftReply: draftReply, promptSent: prompt, rawResponse: result.stdout)
     }
 }
 

@@ -1,27 +1,16 @@
 import SwiftUI
 
 struct LogViewerView: View {
+    let scheduleId: UUID
+    let scheduleName: String
     @EnvironmentObject var logService: LogService
-    @EnvironmentObject var scheduleStore: ScheduleStore
     @State private var filterLevel: LogLevel = .info
-    @State private var filterScheduleId: UUID?
+    @State private var autoScroll = true
+    @State private var isAutoScrolling = false
 
     private var filteredLogs: [LogEntry] {
         logService.logs.filter { entry in
-            if entry.level < filterLevel { return false }
-            if let scheduleId = filterScheduleId, entry.scheduleId != scheduleId { return false }
-            return true
-        }
-    }
-
-    private func scheduleName(for id: UUID) -> String {
-        scheduleStore.schedules.first { $0.id == id }?.name ?? id.uuidString.prefix(8).description
-    }
-
-    /// Unique schedule IDs that have logs
-    private var scheduleIdsWithLogs: [UUID] {
-        Array(Set(logService.logs.map(\.scheduleId))).sorted {
-            scheduleName(for: $0) < scheduleName(for: $1)
+            entry.scheduleId == scheduleId && entry.level >= filterLevel
         }
     }
 
@@ -36,38 +25,27 @@ struct LogViewerView: View {
                 }
                 .frame(width: 150)
 
-                Picker("Schedule", selection: $filterScheduleId) {
-                    Text("All Schedules").tag(nil as UUID?)
-                    ForEach(scheduleIdsWithLogs, id: \.self) { id in
-                        Text(scheduleName(for: id)).tag(id as UUID?)
-                    }
-                }
-                .frame(width: 200)
-
                 Spacer()
 
+                Toggle(isOn: $autoScroll) {
+                    Image(systemName: "arrow.down.to.line")
+                }
+                .toggleStyle(.button)
+                .help(autoScroll ? "Auto-scroll enabled" : "Auto-scroll disabled")
+
                 Button {
-                    logService.loadAllLogs()
+                    logService.loadLogs(scheduleId: scheduleId)
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .help("Reload logs")
 
-                if let scheduleId = filterScheduleId {
-                    Button {
-                        logService.clearLogs(for: scheduleId)
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .help("Clear logs for \(scheduleName(for: scheduleId))")
-                } else {
-                    Button {
-                        logService.clearAllLogs()
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .help("Clear all logs")
+                Button {
+                    logService.clearLogs(for: scheduleId)
+                } label: {
+                    Image(systemName: "trash")
                 }
+                .help("Clear logs")
             }
             .padding(8)
 
@@ -77,35 +55,65 @@ struct LogViewerView: View {
                 ContentUnavailableView(
                     "No Logs",
                     systemImage: "doc.text",
-                    description: Text("No log entries match the current filters")
+                    description: Text("No log entries match the current filter")
                 )
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(filteredLogs) { entry in
-                            HStack(alignment: .top, spacing: 8) {
-                                Text(entry.timestamp.shortFormatted)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 140, alignment: .leading)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(filteredLogs) { entry in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Text(entry.timestamp.shortFormatted)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 140, alignment: .leading)
 
-                                Text(entry.level.rawValue.uppercased())
-                                    .font(.caption.monospaced().bold())
-                                    .foregroundStyle(levelColor(entry.level))
-                                    .frame(width: 60)
+                                    Text(entry.level.rawValue.uppercased())
+                                        .font(.caption.monospaced().bold())
+                                        .foregroundStyle(levelColor(entry.level))
+                                        .frame(width: 60)
 
-                                Text(scheduleName(for: entry.scheduleId))
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.blue)
-                                    .frame(width: 100, alignment: .leading)
-                                    .lineLimit(1)
-
-                                Text(entry.message)
-                                    .font(.caption.monospaced())
-                                    .textSelection(.enabled)
+                                    Text(entry.message)
+                                        .font(.caption.monospaced())
+                                        .textSelection(.enabled)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .id(entry.id)
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
+                            // Invisible anchor at the very bottom — track visibility
+                            GeometryReader { geo in
+                                Color.clear
+                                    .onChange(of: geo.frame(in: .named("logScroll")).maxY) { _, maxY in
+                                        // If not currently doing a programmatic scroll,
+                                        // user scrolled away from bottom → disable auto-scroll
+                                        if !isAutoScrolling && autoScroll {
+                                            // Bottom anchor is off-screen if maxY > container height + threshold
+                                            // We just check if it moved significantly
+                                            autoScroll = false
+                                        }
+                                    }
+                            }
+                            .frame(height: 1)
+                            .id("bottom")
+                        }
+                    }
+                    .coordinateSpace(name: "logScroll")
+                    .onChange(of: filteredLogs.count) { _, _ in
+                        if autoScroll {
+                            scrollToBottom(proxy)
+                        }
+                    }
+                    .onChange(of: autoScroll) { _, isOn in
+                        if isOn {
+                            scrollToBottom(proxy)
+                        }
+                    }
+                    .onAppear {
+                        if autoScroll {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                scrollToBottom(proxy)
+                            }
                         }
                     }
                 }
@@ -114,7 +122,18 @@ struct LogViewerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .frame(minWidth: 700, minHeight: 400)
         .onAppear {
-            logService.loadAllLogs()
+            logService.loadLogs(scheduleId: scheduleId)
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        isAutoScrolling = true
+        withAnimation(.easeOut(duration: 0.15)) {
+            proxy.scrollTo("bottom", anchor: .bottom)
+        }
+        // Reset flag well after scroll animation settles
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            isAutoScrolling = false
         }
     }
 
