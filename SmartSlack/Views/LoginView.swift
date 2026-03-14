@@ -49,7 +49,7 @@ struct LoginView: View {
                         .frame(width: 100)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.primary)
             .disabled(token.isEmpty || isConnecting)
             .keyboardShortcut(.defaultAction)
 

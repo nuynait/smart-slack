@@ -8,9 +8,34 @@ struct SlackChannel: Codable, Identifiable, Hashable {
     let isIm: Bool?
     let isMpim: Bool?
     let user: String?
+    var resolvedName: String?
 
     var displayName: String {
-        name ?? user ?? id
+        resolvedName ?? name ?? user ?? id
+    }
+}
+
+struct SlackFile: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String?
+    let mimetype: String?
+    let filetype: String?
+    let urlPrivateDownload: String?
+    let urlPrivate: String?
+    let thumb360: String?
+    let thumb480: String?
+    let thumb720: String?
+
+    var isImage: Bool {
+        mimetype?.hasPrefix("image/") == true
+    }
+
+    var bestUrl: String? {
+        urlPrivateDownload ?? urlPrivate
+    }
+
+    var bestThumbUrl: String? {
+        thumb720 ?? thumb480 ?? thumb360 ?? bestUrl
     }
 }
 
@@ -21,8 +46,13 @@ struct SlackMessage: Codable, Identifiable, Hashable {
     let ts: String?
     let threadTs: String?
     let replyCount: Int?
+    let files: [SlackFile]?
 
     var id: String { ts ?? UUID().uuidString }
+
+    var imageFiles: [SlackFile] {
+        files?.filter(\.isImage) ?? []
+    }
 }
 
 struct SlackConversationsListResponse: Codable {
@@ -82,4 +112,10 @@ struct SlackUserInfo: Codable {
 struct SlackProfile: Codable {
     let displayName: String?
     let realName: String?
+}
+
+struct SlackConversationsInfoResponse: Codable {
+    let ok: Bool
+    let channel: SlackChannel?
+    let error: String?
 }

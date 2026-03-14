@@ -45,8 +45,7 @@ struct DraftHistoryView: View {
                                         .font(.caption)
                                 }
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .buttonStyle(.smallSecondary)
                             .disabled(sendingId != nil)
                         }
                     }

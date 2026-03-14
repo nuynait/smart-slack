@@ -28,44 +28,12 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $selectedTab) {
-                HStack {
-                    Text("Active")
-                    if activeCount > 0 {
-                        Text("\(activeCount)")
-                            .font(.caption2)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(.green.opacity(0.2))
-                            .clipShape(Capsule())
-                    }
-                }
-                .tag(SidebarTab.active)
-
-                HStack {
-                    Text("Done")
-                    if completedCount > 0 {
-                        Text("\(completedCount)")
-                            .font(.caption2)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(.blue.opacity(0.2))
-                            .clipShape(Capsule())
-                    }
-                }
-                .tag(SidebarTab.completed)
-
-                HStack {
-                    Text("Failed")
-                    if failedCount > 0 {
-                        Text("\(failedCount)")
-                            .font(.caption2)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(.red.opacity(0.2))
-                            .clipShape(Capsule())
-                    }
-                }
-                .tag(SidebarTab.failed)
+                Text(activeCount > 0 ? "Active (\(activeCount))" : "Active")
+                    .tag(SidebarTab.active)
+                Text(completedCount > 0 ? "Done (\(completedCount))" : "Done")
+                    .tag(SidebarTab.completed)
+                Text(failedCount > 0 ? "Failed (\(failedCount))" : "Failed")
+                    .tag(SidebarTab.failed)
             }
             .pickerStyle(.segmented)
             .padding(8)
@@ -77,5 +45,24 @@ struct SidebarView: View {
             .listStyle(.sidebar)
         }
         .frame(minWidth: 280, idealWidth: 320)
+        .onChange(of: scheduleStore.schedules) { _, _ in
+            syncTabToSelection()
+        }
+        .onChange(of: selectedScheduleId) { _, _ in
+            syncTabToSelection()
+        }
+    }
+
+    private func syncTabToSelection() {
+        guard let id = selectedScheduleId,
+              let schedule = scheduleStore.schedule(byId: id) else { return }
+        let needed: SidebarTab = switch schedule.status {
+        case .active: .active
+        case .completed: .completed
+        case .failed: .failed
+        }
+        if selectedTab != needed {
+            selectedTab = needed
+        }
     }
 }

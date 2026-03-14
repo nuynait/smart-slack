@@ -5,6 +5,7 @@ struct MainView: View {
     @EnvironmentObject var scheduleStore: ScheduleStore
     @State private var selectedScheduleId: UUID?
     @State private var showAddSheet = false
+    @State private var showAddFromLinkSheet = false
 
     var body: some View {
         NavigationSplitView {
@@ -23,16 +24,28 @@ struct MainView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showAddSheet = true
+                Menu {
+                    Button("Browse Channels") {
+                        showAddSheet = true
+                    }
+                    .keyboardShortcut("n", modifiers: .command)
+
+                    Button("From Message Link") {
+                        showAddFromLinkSheet = true
+                    }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
                 } label: {
                     Image(systemName: "plus")
                 }
-                .keyboardShortcut("n", modifiers: .command)
             }
 
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button("History") {
+                        openHistory()
+                    }
+                    .keyboardShortcut("h", modifiers: [.command, .shift])
+
                     Button("Log Viewer") {
                         openLogViewer()
                     }
@@ -55,6 +68,19 @@ struct MainView: View {
         .sheet(isPresented: $showAddSheet) {
             AddScheduleView()
         }
+        .sheet(isPresented: $showAddFromLinkSheet) {
+            AddScheduleFromLinkView()
+        }
+    }
+
+    private func openHistory() {
+        let historyView = HistoryView()
+            .environmentObject(scheduleStore)
+        let controller = NSHostingController(rootView: historyView)
+        let window = NSWindow(contentViewController: controller)
+        window.title = "SmartSlack History"
+        window.setContentSize(NSSize(width: 750, height: 550))
+        window.makeKeyAndOrderFront(nil)
     }
 
     private func openLogViewer() {

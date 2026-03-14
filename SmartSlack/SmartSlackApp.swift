@@ -11,6 +11,7 @@ struct SmartSlackApp: App {
                 .environmentObject(appDelegate.appVM.scheduleStore)
                 .environmentObject(appDelegate.appVM.schedulerEngine)
                 .environmentObject(appDelegate.appVM.logService)
+                .environmentObject(appDelegate.appVM.userColorStore)
         }
         .defaultSize(width: 1000, height: 700)
     }

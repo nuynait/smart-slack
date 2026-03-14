@@ -23,76 +23,93 @@ struct AddScheduleView: View {
                 .font(.title2.bold())
                 .padding()
 
-            Form {
-                TextField("Name", text: $name)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Name")
+                            .font(.headline)
+                        TextField("Schedule name", text: $name)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .formCard()
 
-                Picker("Type", selection: $type) {
-                    Text("Channel").tag(ScheduleType.channel)
-                    Text("Thread").tag(ScheduleType.thread)
-                    Text("DM").tag(ScheduleType.dm)
-                    Text("Group DM").tag(ScheduleType.dmgroup)
-                }
-                .onChange(of: type) { _, _ in
-                    channelId = ""
-                    channelName = ""
-                    Task { await loadChannels() }
-                }
-
-                if isLoadingChannels {
-                    ProgressView("Loading channels...")
-                } else {
-                    Picker("Channel", selection: $channelId) {
-                        Text("Select...").tag("")
-                        ForEach(filteredChannels) { ch in
-                            Text(ch.displayName).tag(ch.id)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Type")
+                            .font(.headline)
+                        Picker("", selection: $type) {
+                            Text("Channel").tag(ScheduleType.channel)
+                            Text("Thread").tag(ScheduleType.thread)
+                            Text("DM").tag(ScheduleType.dm)
+                            Text("Group DM").tag(ScheduleType.dmgroup)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .onChange(of: type) { _, _ in
+                            channelId = ""
+                            channelName = ""
+                            Task { await loadChannels() }
                         }
                     }
-                    .onChange(of: channelId) { _, newValue in
-                        channelName = filteredChannels.first { $0.id == newValue }?.displayName ?? ""
+                    .formCard()
+
+                    if isLoadingChannels {
+                        ProgressView("Loading channels...")
+                            .formCard()
+                    } else {
+                        ChannelPickerView(
+                            channels: filteredChannels,
+                            selectedId: $channelId,
+                            selectedName: $channelName
+                        )
+                    }
+
+                    if type == .thread {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Thread TS")
+                                .font(.headline)
+                            TextField("Thread timestamp", text: $threadTs)
+                                .textFieldStyle(.roundedBorder)
+                                .help("The ts value of the thread parent message")
+                        }
+                        .formCard()
+                    }
+
+                    IntervalPickerView(intervalSeconds: $intervalSeconds)
+                        .formCard()
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Prompt")
+                            .font(.headline)
+                        TextEditor(text: $prompt)
+                            .frame(minHeight: 80)
+                            .font(.body)
+                    }
+                    .formCard()
+
+                    if let error {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
                     }
                 }
-
-                if type == .thread {
-                    TextField("Thread TS", text: $threadTs)
-                        .help("The ts value of the thread parent message")
-                }
-
-                VStack(alignment: .leading) {
-                    Text("Check every \(formatInterval(Int(intervalSeconds)))")
-                    Slider(value: $intervalSeconds, in: 5...1800, step: 5)
-                }
-
-                VStack(alignment: .leading) {
-                    Text("Prompt")
-                        .font(.headline)
-                    TextEditor(text: $prompt)
-                        .frame(minHeight: 80)
-                        .font(.body)
-                }
-
-                if let error {
-                    Text(error)
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                }
+                .padding(16)
             }
-            .formStyle(.grouped)
-            .padding(.horizontal)
 
             HStack {
                 Button("Cancel") { dismiss() }
+                    .buttonStyle(.secondary)
                     .keyboardShortcut(.cancelAction)
 
                 Spacer()
 
                 Button("Create") { create() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.primary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.isEmpty || channelId.isEmpty || prompt.isEmpty)
             }
             .padding()
         }
-        .frame(width: 500, height: 550)
+        .frame(width: 500, height: 650)
         .task { await loadChannels() }
     }
 
@@ -111,7 +128,25 @@ struct AddScheduleView: View {
         guard let slackService = appVM.slackService else { return }
         isLoadingChannels = true
         do {
-            channels = try await slackService.listConversations()
+            var fetched = try await slackService.listConversations()
+
+            // Resolve DM user IDs to profile names
+            let dmChannels = fetched.filter { $0.isIm == true && $0.user != nil }
+            for dm in dmChannels {
+                guard let userId = dm.user else { continue }
+                if let userInfo = try? await slackService.usersInfo(userId: userId) {
+                    let profileName = userInfo.profile?.displayName.flatMap({ $0.isEmpty ? nil : $0 })
+                        ?? userInfo.profile?.realName.flatMap({ $0.isEmpty ? nil : $0 })
+                        ?? userInfo.realName
+                        ?? userInfo.name
+                        ?? userId
+                    if let idx = fetched.firstIndex(where: { $0.id == dm.id }) {
+                        fetched[idx].resolvedName = profileName
+                    }
+                }
+            }
+
+            channels = fetched
         } catch {
             self.error = error.localizedDescription
         }
@@ -140,11 +175,4 @@ struct AddScheduleView: View {
         dismiss()
     }
 
-    private func formatInterval(_ seconds: Int) -> String {
-        if seconds < 60 { return "\(seconds)s" }
-        let minutes = seconds / 60
-        let remaining = seconds % 60
-        if remaining == 0 { return "\(minutes)m" }
-        return "\(minutes)m \(remaining)s"
-    }
 }

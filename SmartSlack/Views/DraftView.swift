@@ -40,7 +40,7 @@ struct DraftView: View {
                         Label("Send", systemImage: "paperplane.fill")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primary)
                 .disabled(session.draftReply == nil || isSending || isRewriting)
 
                 Button {
@@ -48,7 +48,7 @@ struct DraftView: View {
                 } label: {
                     Label("Ignore", systemImage: "xmark")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.secondary)
                 .disabled(isSending || isRewriting)
             }
 
@@ -67,7 +67,7 @@ struct DraftView: View {
                         Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.secondary)
                 .disabled(rewritePrompt.isEmpty || isRewriting || isSending)
             }
         }
@@ -131,7 +131,9 @@ struct DraftView: View {
                 draftHistory: currentHistory,
                 originalPrompt: schedule.prompt,
                 rewritePrompt: rewritePrompt,
-                channelName: schedule.channelName
+                channelName: schedule.channelName,
+                ownerUserId: appVM.slackUserId,
+                ownerDisplayName: appVM.slackUserDisplayName
             )
 
             var updated = schedule

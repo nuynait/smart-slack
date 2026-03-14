@@ -23,53 +23,65 @@ struct EditScheduleView: View {
                 .font(.title2.bold())
                 .padding()
 
-            Form {
-                TextField("Name", text: $name)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Name")
+                            .font(.headline)
+                        TextField("Schedule name", text: $name)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .formCard()
 
-                HStack {
-                    Text("Type")
-                    Spacer()
-                    Text(schedule.type.rawValue.capitalized)
-                        .foregroundStyle(.secondary)
-                }
+                    HStack {
+                        Text("Type")
+                            .font(.headline)
+                        Spacer()
+                        Text(schedule.type.rawValue.capitalized)
+                            .foregroundStyle(.secondary)
+                    }
+                    .formCard()
 
-                HStack {
-                    Text("Channel")
-                    Spacer()
-                    Text(schedule.channelName)
-                        .foregroundStyle(.secondary)
-                }
+                    HStack {
+                        Text("Channel")
+                            .font(.headline)
+                        Spacer()
+                        Text(schedule.channelName)
+                            .foregroundStyle(.secondary)
+                    }
+                    .formCard()
 
-                VStack(alignment: .leading) {
-                    Text("Check every \(formatInterval(Int(intervalSeconds)))")
-                    Slider(value: $intervalSeconds, in: 5...1800, step: 5)
-                }
+                    IntervalPickerView(intervalSeconds: $intervalSeconds)
+                        .formCard()
 
-                VStack(alignment: .leading) {
-                    Text("Prompt")
-                        .font(.headline)
-                    TextEditor(text: $prompt)
-                        .frame(minHeight: 80)
-                        .font(.body)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Prompt")
+                            .font(.headline)
+                        TextEditor(text: $prompt)
+                            .frame(minHeight: 80)
+                            .font(.body)
+                    }
+                    .formCard()
                 }
+                .padding(16)
             }
-            .formStyle(.grouped)
-            .padding(.horizontal)
 
             HStack {
                 Button("Cancel") { dismiss() }
+                    .buttonStyle(.secondary)
                     .keyboardShortcut(.cancelAction)
 
                 Spacer()
 
-                Button("Delete", role: .destructive) {
+                Button("Delete") {
                     schedulerEngine.stopSchedule(schedule.id)
                     scheduleStore.deleteSchedule(schedule)
                     dismiss()
                 }
+                .buttonStyle(.destructive)
 
                 Button("Save") { save() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.primary)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.isEmpty || prompt.isEmpty)
             }
@@ -94,11 +106,4 @@ struct EditScheduleView: View {
         dismiss()
     }
 
-    private func formatInterval(_ seconds: Int) -> String {
-        if seconds < 60 { return "\(seconds)s" }
-        let minutes = seconds / 60
-        let remaining = seconds % 60
-        if remaining == 0 { return "\(minutes)m" }
-        return "\(minutes)m \(remaining)s"
-    }
 }

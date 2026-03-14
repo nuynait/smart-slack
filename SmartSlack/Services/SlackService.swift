@@ -103,10 +103,34 @@ actor SlackService {
         return response
     }
 
+    func conversationsInfo(channelId: String) async throws -> SlackChannel {
+        let data = try await get(endpoint: "conversations.info", params: [("channel", channelId)])
+        let response = try JSONDecoder.slackDecoder.decode(SlackConversationsInfoResponse.self, from: data)
+        guard response.ok, let channel = response.channel else {
+            throw SlackError.apiError(response.error ?? "Unknown error")
+        }
+        return channel
+    }
+
     func usersInfo(userId: String) async throws -> SlackUserInfo? {
         let data = try await get(endpoint: "users.info", params: [("user", userId)])
         let response = try JSONDecoder.slackDecoder.decode(SlackUsersInfoResponse.self, from: data)
         return response.user
+    }
+
+    // MARK: - File Download
+
+    func downloadFile(url: String, to destination: URL) async throws {
+        guard let fileURL = URL(string: url) else {
+            throw SlackError.apiError("Invalid file URL")
+        }
+        var request = URLRequest(url: fileURL)
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw SlackError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        try data.write(to: destination)
     }
 
     // MARK: - HTTP

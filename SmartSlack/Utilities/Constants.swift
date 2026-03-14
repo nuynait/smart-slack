@@ -43,4 +43,7 @@ enum Constants {
     ]
 
     static let draftSignature = "\n\n— drafted with Claude Code"
+
+    static let starredChannelsFile: URL = appSupportDir.appendingPathComponent("starred_channels.json")
+    static let userColorsFile: URL = appSupportDir.appendingPathComponent("user_colors.json")
 }

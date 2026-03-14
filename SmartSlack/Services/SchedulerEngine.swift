@@ -10,6 +10,8 @@ final class SchedulerEngine: ObservableObject {
     private let scheduleStore: ScheduleStore
     private let logService: LogService
     private var slackService: SlackService?
+    private var ownerUserId: String?
+    private var ownerDisplayName: String?
 
     init(scheduleStore: ScheduleStore, logService: LogService) {
         self.scheduleStore = scheduleStore
@@ -20,13 +22,18 @@ final class SchedulerEngine: ObservableObject {
         self.slackService = service
     }
 
+    func setOwner(userId: String?, displayName: String?) {
+        self.ownerUserId = userId
+        self.ownerDisplayName = displayName
+    }
+
     // MARK: - Start / Stop
 
     func startSchedule(_ schedule: Schedule) {
         guard schedule.status == .active else { return }
         stopSchedule(schedule.id)
 
-        countdowns[schedule.id] = TimeInterval(schedule.intervalSeconds)
+        countdowns[schedule.id] = 0
         logService.log(.info, scheduleId: schedule.id, message: "Started schedule '\(schedule.name)' with interval \(schedule.intervalSeconds)s")
 
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -138,22 +145,50 @@ final class SchedulerEngine: ObservableObject {
                 return
             }
 
-            logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Found \(newMessages.count) new messages, calling Claude")
+            // Skip Claude if all new messages are from the owner, but store them
+            if let ownerId = ownerUserId {
+                let allFromOwner = newMessages.allSatisfy { $0.user == ownerId }
+                if allFromOwner {
+                    logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "All \(newMessages.count) new messages are from owner, storing without Claude")
+                    runningSchedules.remove(schedule.id)
+                    var updated = schedule
+                    updated.lastRun = Date()
+                    updated.lastMessageTs = newMessages.compactMap(\.ts).max() ?? schedule.lastMessageTs
+                    updated.pendingMessages.append(contentsOf: newMessages)
+                    scheduleStore.updateSchedule(updated)
+                    return
+                }
+            }
+
+            // Merge any pending owner messages with new messages for full context
+            let allMessages = schedule.pendingMessages + newMessages
+
+            logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Found \(newMessages.count) new messages (\(schedule.pendingMessages.count) pending), calling Claude")
+
+            // Download images from messages
+            let imagePaths = await downloadImages(from: allMessages, scheduleId: schedule.id, sessionId: sessionId, slackService: slackService)
+            if !imagePaths.isEmpty {
+                logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Downloaded \(imagePaths.count) images")
+            }
 
             // Call Claude
             let result = try await ClaudeService.analyze(
-                messages: newMessages,
+                messages: allMessages,
                 prompt: schedule.prompt,
-                channelName: schedule.channelName
+                channelName: schedule.channelName,
+                ownerUserId: ownerUserId,
+                ownerDisplayName: ownerDisplayName,
+                imagePaths: imagePaths
             )
 
-            logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Claude analysis complete")
+            logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Claude prompt:\n\(result.promptSent)")
+            logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Claude response:\n\(result.rawResponse)")
 
-            // Create session
+            // Create session with all messages (pending + new)
             let session = Session(
                 sessionId: sessionId,
                 timestamp: Date(),
-                messages: newMessages,
+                messages: allMessages,
                 summary: result.summary,
                 draftReply: result.draftReply,
                 draftHistory: [],
@@ -161,10 +196,11 @@ final class SchedulerEngine: ObservableObject {
                 sentMessage: nil
             )
 
-            // Update schedule
+            // Update schedule, clear pending messages
             var updated = schedule
             updated.lastRun = Date()
             updated.lastMessageTs = newMessages.compactMap(\.ts).max() ?? schedule.lastMessageTs
+            updated.pendingMessages = []
             updated.sessions.append(session)
             scheduleStore.updateSchedule(updated)
 
@@ -178,5 +214,32 @@ final class SchedulerEngine: ObservableObject {
         }
 
         runningSchedules.remove(schedule.id)
+    }
+
+    // MARK: - Image Download
+
+    private func downloadImages(from messages: [SlackMessage], scheduleId: UUID, sessionId: UUID, slackService: SlackService) async -> [String] {
+        let imageFiles = messages.flatMap(\.imageFiles)
+        guard !imageFiles.isEmpty else { return [] }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SmartSlack")
+            .appendingPathComponent(sessionId.uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        var paths: [String] = []
+        for file in imageFiles {
+            guard let url = file.bestUrl else { continue }
+            let ext = file.filetype ?? "png"
+            let fileName = "\(file.id).\(ext)"
+            let dest = tempDir.appendingPathComponent(fileName)
+            do {
+                try await slackService.downloadFile(url: url, to: dest)
+                paths.append(dest.path)
+            } catch {
+                logService.log(.warning, scheduleId: scheduleId, sessionId: sessionId, message: "Failed to download image \(file.name ?? file.id): \(error.localizedDescription)")
+            }
+        }
+        return paths
     }
 }

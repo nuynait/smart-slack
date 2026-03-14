@@ -5,7 +5,9 @@ struct ScheduleDetailView: View {
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
     @EnvironmentObject var schedulerEngine: SchedulerEngine
+    @EnvironmentObject var userColorStore: UserColorStore
     @State private var showEditSheet = false
+    @State private var colorPickerUserId: String?
 
     var body: some View {
         ScrollView {
@@ -46,7 +48,7 @@ struct ScheduleDetailView: View {
                     .help("Mark as completed")
                 }
 
-                if schedule.status == .failed {
+                if schedule.status == .failed || schedule.status == .completed {
                     Button {
                         var updated = schedule
                         updated.status = .active
@@ -55,7 +57,7 @@ struct ScheduleDetailView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
-                    .help("Restart schedule")
+                    .help("Re-activate schedule")
                 }
 
                 Button {
@@ -137,29 +139,49 @@ struct ScheduleDetailView: View {
 
     // MARK: - Session
 
+    private static let messageTimestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .medium
+        f.timeZone = .current
+        return f
+    }()
+
+    private func slackTsToDate(_ ts: String?) -> Date? {
+        guard let ts, let interval = Double(ts.split(separator: ".").first ?? "") else { return nil }
+        return Date(timeIntervalSince1970: interval)
+    }
+
+    private var latestMessageIds: Set<String> {
+        guard let latest = schedule.latestSession else { return [] }
+        return Set(latest.messages.compactMap(\.ts))
+    }
+
+    private var conversationMessages: [SlackMessage] {
+        // Collect messages from all sessions + pending, deduplicate by ts, sort newest first
+        var seen = Set<String>()
+        var all: [SlackMessage] = []
+        for session in schedule.sessions {
+            for msg in session.messages {
+                let key = msg.ts ?? UUID().uuidString
+                if !seen.contains(key) {
+                    seen.insert(key)
+                    all.append(msg)
+                }
+            }
+        }
+        for msg in schedule.pendingMessages {
+            let key = msg.ts ?? UUID().uuidString
+            if !seen.contains(key) {
+                seen.insert(key)
+                all.append(msg)
+            }
+        }
+        return all.sorted { ($0.ts ?? "") > ($1.ts ?? "") }
+    }
+
     private func sessionSection(_ session: Session) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Messages
-            if !session.messages.isEmpty {
-                sectionHeader("Conversation", icon: "bubble.left.and.bubble.right")
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(session.messages) { message in
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(message.user ?? "?")
-                                .font(.caption.bold())
-                                .foregroundStyle(.blue)
-                                .frame(width: 80, alignment: .trailing)
-                            Text(message.text ?? "")
-                                .font(.body)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-                .padding(12)
-                .background(.quaternary)
-                .cornerRadius(8)
-            }
-
             // Summary
             if let summary = session.summary {
                 sectionHeader("Summary", icon: "text.alignleft")
@@ -177,9 +199,42 @@ struct ScheduleDetailView: View {
                 completedActionView(session)
             }
 
-            // History
+            // Draft History
             if !session.draftHistory.isEmpty {
                 DraftHistoryView(schedule: schedule, session: session)
+            }
+
+            // Conversation (newest on top)
+            let messages = conversationMessages
+            if !messages.isEmpty {
+                sectionHeader("Conversation", icon: "bubble.left.and.bubble.right")
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        let isLatest = latestMessageIds.contains(message.ts ?? "")
+                        let isOwner = message.user == appVM.slackUserId
+                        let nextIsLatest = index + 1 < messages.count ? latestMessageIds.contains(messages[index + 1].ts ?? "") : false
+                        let isLastNew = isLatest && !nextIsLatest
+
+                        messageRow(message: message, isLatest: isLatest, isOwner: isOwner)
+
+                        if isLastNew {
+                            olderDivider
+                        }
+                    }
+                }
+                .padding(8)
+                .popover(isPresented: Binding(
+                    get: { colorPickerUserId != nil },
+                    set: { if !$0 { colorPickerUserId = nil } }
+                )) {
+                    if let userId = colorPickerUserId {
+                        userColorPicker(userId: userId)
+                    }
+                }
+                .onAppear {
+                    let userIds = messages.compactMap(\.user)
+                    appVM.resolveUserNames(ids: userIds)
+                }
             }
         }
     }
@@ -199,6 +254,103 @@ struct ScheduleDetailView: View {
                     .textSelection(.enabled)
             }
         }
+    }
+
+    private func messageRow(message: SlackMessage, isLatest: Bool, isOwner: Bool) -> some View {
+        let userId = message.user ?? "?"
+        let nameColor: Color = isOwner ? .primary : userColorStore.color(for: userId)
+
+        return HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(appVM.displayName(for: userId))
+                    .font(.caption.bold())
+                    .foregroundStyle(nameColor)
+                if isOwner {
+                    Text("owner")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 50, alignment: .trailing)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if !isOwner {
+                    colorPickerUserId = userId
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message.text ?? "")
+                    .font(isLatest ? .body : .callout)
+                    .foregroundStyle(isOwner ? Color.primary.opacity(0.7) : (isLatest ? Color.primary : Color.secondary))
+                    .textSelection(.enabled)
+
+                if !message.imageFiles.isEmpty {
+                    messageImages(message.imageFiles)
+                }
+
+                if let date = slackTsToDate(message.ts) {
+                    Text(Self.messageTimestampFormatter.string(from: date))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            isOwner
+                ? Color.gray.opacity(0.08)
+                : nameColor.opacity(0.08)
+        )
+    }
+
+    private func messageImages(_ files: [SlackFile]) -> some View {
+        HStack(spacing: 6) {
+            ForEach(files) { file in
+                SlackImageView(file: file, slackService: appVM.slackService)
+            }
+        }
+    }
+
+    private func userColorPicker(userId: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(appVM.displayName(for: userId))
+                .font(.headline)
+                .padding(.bottom, 2)
+
+            let columns = Array(repeating: GridItem(.fixed(24), spacing: 6), count: 5)
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(0..<UserColorStore.presetColors.count, id: \.self) { index in
+                    let isSelected = userColorStore.colorIndex(for: userId) == index
+                    Circle()
+                        .fill(UserColorStore.presetColors[index])
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(.white, lineWidth: isSelected ? 2 : 0)
+                        )
+                        .shadow(color: isSelected ? .primary.opacity(0.3) : .clear, radius: 2)
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            userColorStore.setColor(for: userId, index: index)
+                        }
+                }
+            }
+        }
+        .padding(12)
+    }
+
+    private var olderDivider: some View {
+        HStack {
+            Rectangle().frame(height: 1).foregroundStyle(.orange.opacity(0.5))
+            Text("Older")
+                .font(.caption2.bold())
+                .foregroundStyle(.orange)
+            Rectangle().frame(height: 1).foregroundStyle(.orange.opacity(0.5))
+        }
+        .padding(.vertical, 6)
     }
 
     private func sectionHeader(_ title: String, icon: String) -> some View {

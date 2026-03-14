@@ -53,8 +53,45 @@ struct Schedule: Codable, Identifiable, Hashable {
     var lastRun: Date?
     var lastMessageTs: String?
     var sessions: [Session]
+    var pendingMessages: [SlackMessage]
 
+    /// Latest session that was processed by Claude (has a summary).
     var latestSession: Session? {
-        sessions.last
+        sessions.last(where: { $0.summary != nil })
+    }
+
+    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = []) {
+        self.id = id
+        self.name = name
+        self.type = type
+        self.channelId = channelId
+        self.threadTs = threadTs
+        self.channelName = channelName
+        self.prompt = prompt
+        self.intervalSeconds = intervalSeconds
+        self.status = status
+        self.createdAt = createdAt
+        self.lastRun = lastRun
+        self.lastMessageTs = lastMessageTs
+        self.sessions = sessions
+        self.pendingMessages = pendingMessages
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        type = try container.decode(ScheduleType.self, forKey: .type)
+        channelId = try container.decode(String.self, forKey: .channelId)
+        threadTs = try container.decodeIfPresent(String.self, forKey: .threadTs)
+        channelName = try container.decode(String.self, forKey: .channelName)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        intervalSeconds = try container.decode(Int.self, forKey: .intervalSeconds)
+        status = try container.decode(ScheduleStatus.self, forKey: .status)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        lastRun = try container.decodeIfPresent(Date.self, forKey: .lastRun)
+        lastMessageTs = try container.decodeIfPresent(String.self, forKey: .lastMessageTs)
+        sessions = try container.decode([Session].self, forKey: .sessions)
+        pendingMessages = try container.decodeIfPresent([SlackMessage].self, forKey: .pendingMessages) ?? []
     }
 }
