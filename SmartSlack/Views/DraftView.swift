@@ -133,7 +133,8 @@ struct DraftView: View {
                 rewritePrompt: rewritePrompt,
                 channelName: schedule.channelName,
                 ownerUserId: appVM.slackUserId,
-                ownerDisplayName: appVM.slackUserDisplayName
+                ownerDisplayName: appVM.slackUserDisplayName,
+                userNames: appVM.userNameCache
             )
 
             var updated = schedule

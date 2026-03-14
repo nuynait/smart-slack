@@ -10,22 +10,32 @@ struct ScheduleDetailView: View {
     @State private var colorPickerUserId: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                headerSection
-                Divider()
-
-                if let session = schedule.latestSession {
-                    sessionSection(session)
-                } else {
+        Group {
+            if let session = schedule.latestSession {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection
+                        Divider()
+                        sessionSection(session)
+                    }
+                    .padding()
+                }
+            } else {
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection
+                        Divider()
+                    }
+                    .padding([.horizontal, .top])
+                    Spacer()
                     ContentUnavailableView(
                         "No Sessions Yet",
                         systemImage: "clock",
                         description: Text("Waiting for the next scheduled check")
                     )
+                    Spacer()
                 }
             }
-            .padding()
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -208,11 +218,10 @@ struct ScheduleDetailView: View {
             // Summary
             if let summary = session.summary {
                 sectionHeader("Summary", icon: "text.alignleft")
-                Text(summary)
+                MarkdownView(text: summary)
                     .padding(12)
                     .background(.quaternary)
                     .cornerRadius(8)
-                    .textSelection(.enabled)
             }
 
             // Draft

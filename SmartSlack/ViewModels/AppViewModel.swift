@@ -20,6 +20,13 @@ final class AppViewModel: ObservableObject {
     private var pendingUserLookups = Set<String>()
 
     init() {
+        schedulerEngine.setUserNameResolver(
+            { [weak self] in self?.userNameCache ?? [:] },
+            updater: { [weak self] names in
+                guard let self else { return }
+                self.userNameCache.merge(names) { _, new in new }
+            }
+        )
         if let token = KeychainService.loadToken() {
             slackService = SlackService(token: token)
             schedulerEngine.setSlackService(slackService!)

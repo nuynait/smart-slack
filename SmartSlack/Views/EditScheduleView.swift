@@ -4,6 +4,7 @@ struct EditScheduleView: View {
     let schedule: Schedule
     @EnvironmentObject var scheduleStore: ScheduleStore
     @EnvironmentObject var schedulerEngine: SchedulerEngine
+    @EnvironmentObject var logService: LogService
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String
@@ -75,6 +76,7 @@ struct EditScheduleView: View {
 
                 Button("Delete") {
                     schedulerEngine.stopSchedule(schedule.id)
+                    logService.deleteLogsForSchedule(schedule.id)
                     scheduleStore.deleteSchedule(schedule)
                     dismiss()
                 }

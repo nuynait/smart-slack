@@ -86,6 +86,7 @@ struct MainView: View {
     private func openLogViewer() {
         let logView = LogViewerView()
             .environmentObject(appVM.logService)
+            .environmentObject(appVM.scheduleStore)
         let controller = NSHostingController(rootView: logView)
         let window = NSWindow(contentViewController: controller)
         window.title = "SmartSlack Logs"

@@ -8,8 +8,8 @@ struct AnalysisResult {
 }
 
 enum ClaudeService {
-    static func analyze(messages: [SlackMessage], prompt: String, channelName: String, ownerUserId: String? = nil, ownerDisplayName: String? = nil, imagePaths: [String] = []) async throws -> AnalysisResult {
-        let messagesText = formatMessages(messages)
+    static func analyze(messages: [SlackMessage], prompt: String, channelName: String, ownerUserId: String? = nil, ownerDisplayName: String? = nil, imagePaths: [String] = [], userNames: [String: String] = [:]) async throws -> AnalysisResult {
+        let messagesText = formatMessages(messages, userNames: userNames)
         let ownerContext = ownerIdentityContext(userId: ownerUserId, displayName: ownerDisplayName)
         let imageContext = imagePaths.isEmpty ? "" : "\n\nThe following images were attached to the messages. They have been provided as files for you to view:\n" + imagePaths.map { "- \($0)" }.joined(separator: "\n")
         let fullPrompt = """
@@ -22,7 +22,7 @@ enum ClaudeService {
         User instructions: \(prompt)
 
         Based on the messages and instructions above, provide your response as a JSON object with exactly two fields:
-        - "summary": a brief summary of what was discussed in the new messages
+        - "summary": a brief summary of what was discussed in the new messages, formatted in markdown (use headers, bullet points, bold, etc. as appropriate for readability)
         - "draft_reply": your suggested reply based on the user's instructions. Write the reply as if you are the owner speaking.
 
         Respond ONLY with valid JSON, no markdown fences or extra text:
@@ -41,9 +41,10 @@ enum ClaudeService {
         channelName: String,
         ownerUserId: String? = nil,
         ownerDisplayName: String? = nil,
-        imagePaths: [String] = []
+        imagePaths: [String] = [],
+        userNames: [String: String] = [:]
     ) async throws -> AnalysisResult {
-        let messagesText = formatMessages(messages)
+        let messagesText = formatMessages(messages, userNames: userNames)
         let ownerContext = ownerIdentityContext(userId: ownerUserId, displayName: ownerDisplayName)
         let imageContext = imagePaths.isEmpty ? "" : "\n\nThe following images were attached to the messages. They have been provided as files for you to view:\n" + imagePaths.map { "- \($0)" }.joined(separator: "\n")
         let summariesText = allSummaries.enumerated().map { "Session \($0.offset + 1): \($0.element)" }.joined(separator: "\n")
@@ -73,7 +74,7 @@ enum ClaudeService {
         The user wants you to rewrite the draft. Their feedback: \(rewritePrompt)
 
         Provide your response as a JSON object with exactly two fields:
-        - "summary": an updated summary
+        - "summary": an updated summary, formatted in markdown (use headers, bullet points, bold, etc. as appropriate for readability)
         - "draft_reply": a new draft reply incorporating the user's feedback. Write the reply as if you are the owner speaking.
 
         Respond ONLY with valid JSON, no markdown fences or extra text:
@@ -96,12 +97,20 @@ enum ClaudeService {
         """
     }
 
-    private static func formatMessages(_ messages: [SlackMessage]) -> String {
-        messages.map { msg in
-            let user = msg.user ?? "unknown"
-            let text = msg.text ?? ""
+    private static func formatMessages(_ messages: [SlackMessage], userNames: [String: String] = [:]) -> String {
+        let mentionPattern = /<@(U[A-Z0-9]+)>/
+        return messages.map { msg in
+            let userId = msg.user ?? "unknown"
+            let displayName = userNames[userId] ?? userId
+            var text = msg.text ?? ""
+            // Replace <@USERID> mentions with display names
+            while let match = text.firstMatch(of: mentionPattern) {
+                let mentionedId = String(match.1)
+                let mentionedName = userNames[mentionedId] ?? mentionedId
+                text.replaceSubrange(match.range, with: "@\(mentionedName)")
+            }
             let ts = msg.ts ?? ""
-            var line = "[\(ts)] <\(user)>: \(text)"
+            var line = "[\(ts)] \(displayName): \(text)"
             let images = msg.imageFiles
             if !images.isEmpty {
                 let names = images.compactMap(\.name).joined(separator: ", ")

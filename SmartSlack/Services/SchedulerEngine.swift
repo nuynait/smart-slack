@@ -12,6 +12,8 @@ final class SchedulerEngine: ObservableObject {
     private var slackService: SlackService?
     private var ownerUserId: String?
     private var ownerDisplayName: String?
+    private var userNameResolver: (() -> [String: String])?
+    private var userNameUpdater: (([String: String]) -> Void)?
 
     init(scheduleStore: ScheduleStore, logService: LogService) {
         self.scheduleStore = scheduleStore
@@ -25,6 +27,11 @@ final class SchedulerEngine: ObservableObject {
     func setOwner(userId: String?, displayName: String?) {
         self.ownerUserId = userId
         self.ownerDisplayName = displayName
+    }
+
+    func setUserNameResolver(_ resolver: @escaping () -> [String: String], updater: @escaping ([String: String]) -> Void) {
+        self.userNameResolver = resolver
+        self.userNameUpdater = updater
     }
 
     // MARK: - Start / Stop
@@ -110,7 +117,7 @@ final class SchedulerEngine: ObservableObject {
 
         runningSchedules.insert(schedule.id)
         let sessionId = UUID()
-        logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Fetching new messages")
+        logService.log(.verbose, scheduleId: schedule.id, sessionId: sessionId, message: "Fetching new messages")
 
         do {
             // Fetch messages
@@ -137,7 +144,7 @@ final class SchedulerEngine: ObservableObject {
                 : messages
 
             guard !newMessages.isEmpty else {
-                logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "No new messages")
+                logService.log(.verbose, scheduleId: schedule.id, sessionId: sessionId, message: "No new messages")
                 runningSchedules.remove(schedule.id)
                 var updated = schedule
                 updated.lastRun = Date()
@@ -165,6 +172,9 @@ final class SchedulerEngine: ObservableObject {
 
             logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Found \(newMessages.count) new messages (\(schedule.pendingMessages.count) pending), calling Claude")
 
+            // Resolve all user names before calling Claude
+            let userNames = await resolveUserNames(from: allMessages, slackService: slackService)
+
             // Download images from messages
             let imagePaths = await downloadImages(from: allMessages, scheduleId: schedule.id, sessionId: sessionId, slackService: slackService)
             if !imagePaths.isEmpty {
@@ -178,7 +188,8 @@ final class SchedulerEngine: ObservableObject {
                 channelName: schedule.channelName,
                 ownerUserId: ownerUserId,
                 ownerDisplayName: ownerDisplayName,
-                imagePaths: imagePaths
+                imagePaths: imagePaths,
+                userNames: userNames
             )
 
             logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Claude prompt:\n\(result.promptSent)")
@@ -214,6 +225,42 @@ final class SchedulerEngine: ObservableObject {
         }
 
         runningSchedules.remove(schedule.id)
+    }
+
+    // MARK: - User Name Resolution
+
+    private func resolveUserNames(from messages: [SlackMessage], slackService: SlackService) async -> [String: String] {
+        var names = userNameResolver?() ?? [:]
+
+        // Collect all user IDs: message authors + mentioned users
+        var userIds = Set(messages.compactMap(\.user))
+        let mentionPattern = /<@(U[A-Z0-9]+)>/
+        for msg in messages {
+            guard let text = msg.text else { continue }
+            for match in text.matches(of: mentionPattern) {
+                userIds.insert(String(match.1))
+            }
+        }
+
+        // Resolve any IDs not already cached
+        let unknown = userIds.filter { names[$0] == nil }
+        for userId in unknown {
+            if let info = try? await slackService.usersInfo(userId: userId) {
+                let name = info.profile?.displayName.flatMap({ $0.isEmpty ? nil : $0 })
+                    ?? info.profile?.realName.flatMap({ $0.isEmpty ? nil : $0 })
+                    ?? info.realName
+                    ?? info.name
+                    ?? userId
+                names[userId] = name
+            }
+        }
+
+        // Push newly resolved names back to the shared cache
+        if !unknown.isEmpty {
+            userNameUpdater?(names)
+        }
+
+        return names
     }
 
     // MARK: - Image Download
