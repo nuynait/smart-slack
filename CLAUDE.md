@@ -32,6 +32,25 @@ See `doc/design.md` for detailed system design, data models, execution flows, an
 - File persistence: individual JSON files per schedule in `~/Library/Application Support/SmartSlack/schedules/`
 - New files: always run `xcodegen generate` after creating new `.swift` files
 
+## Commit Convention
+
+Use [Conventional Commits](https://www.conventionalcommits.org/). Format:
+
+```
+<type>(<scope>): <description>
+```
+
+Types: `feat`, `fix`, `refactor`, `style`, `docs`, `chore`, `perf`, `test`
+
+Scopes (optional): `models`, `services`, `views`, `utils`, `config`
+
+Examples:
+- `feat(services): add image download support for Slack attachments`
+- `fix(views): resolve slider freeze on schedule creation dialog`
+- `docs: add README and design doc`
+- `refactor(views): extract message row into helper function`
+- `style(views): update button styles to custom primary/secondary`
+
 ## Important Rules
 
 - **Update `doc/design.md`** whenever you change architecture, add models/services/views, or modify data flow
