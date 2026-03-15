@@ -35,6 +35,12 @@ struct ScheduleRowView: View {
 
             Spacer()
 
+            if schedule.hasUnresolvedDraft {
+                Image(systemName: "envelope.badge.fill")
+                    .foregroundStyle(Color.statusPending)
+                    .font(.caption)
+            }
+
             if isRunning {
                 ProgressView()
                     .controlSize(.small)

@@ -45,24 +45,5 @@ struct SidebarView: View {
             .listStyle(.sidebar)
         }
         .frame(minWidth: 280, idealWidth: 320)
-        .onChange(of: scheduleStore.schedules) { _, _ in
-            syncTabToSelection()
-        }
-        .onChange(of: selectedScheduleId) { _, _ in
-            syncTabToSelection()
-        }
-    }
-
-    private func syncTabToSelection() {
-        guard let id = selectedScheduleId,
-              let schedule = scheduleStore.schedule(byId: id) else { return }
-        let needed: SidebarTab = switch schedule.status {
-        case .active: .active
-        case .completed: .completed
-        case .failed: .failed
-        }
-        if selectedTab != needed {
-            selectedTab = needed
-        }
     }
 }

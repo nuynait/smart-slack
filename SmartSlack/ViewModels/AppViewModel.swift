@@ -14,6 +14,8 @@ final class AppViewModel: ObservableObject {
     let scheduleStore = ScheduleStore()
     let logService = LogService()
     let userColorStore = UserColorStore()
+    let notificationService = NotificationService()
+    let promptStore = PromptStore()
     lazy var schedulerEngine = SchedulerEngine(scheduleStore: scheduleStore, logService: logService)
 
     private(set) var slackService: SlackService?
@@ -27,6 +29,7 @@ final class AppViewModel: ObservableObject {
                 self.userNameCache.merge(names) { _, new in new }
             }
         )
+        schedulerEngine.setNotificationService(notificationService)
         if let token = KeychainService.loadToken() {
             slackService = SlackService(token: token)
             schedulerEngine.setSlackService(slackService!)

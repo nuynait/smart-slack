@@ -14,6 +14,7 @@ final class SchedulerEngine: ObservableObject {
     private var ownerDisplayName: String?
     private var userNameResolver: (() -> [String: String])?
     private var userNameUpdater: (([String: String]) -> Void)?
+    private var notificationService: NotificationService?
 
     init(scheduleStore: ScheduleStore, logService: LogService) {
         self.scheduleStore = scheduleStore
@@ -32,6 +33,10 @@ final class SchedulerEngine: ObservableObject {
     func setUserNameResolver(_ resolver: @escaping () -> [String: String], updater: @escaping ([String: String]) -> Void) {
         self.userNameResolver = resolver
         self.userNameUpdater = updater
+    }
+
+    func setNotificationService(_ service: NotificationService) {
+        self.notificationService = service
     }
 
     // MARK: - Start / Stop
@@ -222,6 +227,9 @@ final class SchedulerEngine: ObservableObject {
             updated.pendingMessages = []
             updated.sessions.append(session)
             scheduleStore.updateSchedule(updated)
+
+            // Notify based on schedule's notification mode
+            notificationService?.notifySessionReady(schedule: updated, session: session)
 
         } catch {
             logService.log(.error, scheduleId: schedule.id, sessionId: sessionId, message: "Error: \(error.localizedDescription)")

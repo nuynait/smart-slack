@@ -7,6 +7,12 @@ enum ScheduleType: String, Codable, CaseIterable, Hashable {
     case dmgroup
 }
 
+enum NotificationMode: String, Codable, CaseIterable, Hashable {
+    case macosNotification
+    case forcePopup
+    case quiet
+}
+
 enum ScheduleStatus: String, Codable, Hashable {
     case active
     case completed
@@ -55,13 +61,20 @@ struct Schedule: Codable, Identifiable, Hashable {
     var sessions: [Session]
     var pendingMessages: [SlackMessage]
     var initialMessageCount: Int
+    var notificationMode: NotificationMode
 
     /// Latest session that was processed by Claude (has a summary).
     var latestSession: Session? {
         sessions.last(where: { $0.summary != nil })
     }
 
-    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5) {
+    /// Whether the latest session has an unresolved draft (pending action).
+    var hasUnresolvedDraft: Bool {
+        guard let latest = latestSession else { return false }
+        return latest.finalAction == .pending
+    }
+
+    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification) {
         self.id = id
         self.name = name
         self.type = type
@@ -77,6 +90,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         self.sessions = sessions
         self.pendingMessages = pendingMessages
         self.initialMessageCount = initialMessageCount
+        self.notificationMode = notificationMode
     }
 
     init(from decoder: Decoder) throws {
@@ -96,5 +110,6 @@ struct Schedule: Codable, Identifiable, Hashable {
         sessions = try container.decode([Session].self, forKey: .sessions)
         pendingMessages = try container.decodeIfPresent([SlackMessage].self, forKey: .pendingMessages) ?? []
         initialMessageCount = try container.decodeIfPresent(Int.self, forKey: .initialMessageCount) ?? 5
+        notificationMode = try container.decodeIfPresent(NotificationMode.self, forKey: .notificationMode) ?? .macosNotification
     }
 }

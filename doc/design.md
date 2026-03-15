@@ -47,7 +47,9 @@ SmartSlack/
 │   ├── ScheduleStore.swift          # JSON file persistence + FS watching
 │   ├── LogService.swift             # Event logging to files
 │   ├── KeychainService.swift        # Keychain token CRUD
-│   └── UserColorStore.swift         # Persistent user color assignments
+│   ├── UserColorStore.swift         # Persistent user color assignments
+│   ├── NotificationService.swift    # macOS notifications + force popup management
+│   └── PromptStore.swift            # Prompt history, saved prompts, tag generation
 │
 ├── ViewModels/
 │   └── AppViewModel.swift           # Root state: auth, user cache, ownership
@@ -67,7 +69,13 @@ SmartSlack/
 │   ├── HistoryView.swift            # Paginated session history window
 │   ├── LogViewerView.swift          # Filterable log viewer window with auto-scroll
 │   ├── MarkdownView.swift           # Markdown renderer for Claude summaries
-│   └── SlackImageView.swift         # Async Slack image downloader + preview
+│   ├── SlackImageView.swift         # Async Slack image downloader + preview
+│   ├── SettingsView.swift           # App settings with notification/prompt config
+│   ├── ForcePopupView.swift         # Always-on-top popup for force notification mode
+│   ├── PromptManagerView.swift      # Manage prompt history and saved prompts
+│   ├── PromptEditorView.swift       # Edit a prompt with auto-tagging
+│   ├── PromptPickerView.swift       # Popup to select a saved/history prompt
+│   └── PromptInputView.swift        # Reusable prompt input with picker button
 │
 └── Utilities/
     ├── Constants.swift              # Paths, keychain IDs, Slack config
@@ -98,7 +106,8 @@ Schedule
 ├── lastMessageTs: String?      # Slack timestamp of last processed message
 ├── sessions: [Session]         # All Claude analysis sessions
 ├── pendingMessages: [SlackMessage]  # Owner messages waiting for next Claude session
-└── initialMessageCount: Int   # Max messages to include on first fetch (default 5)
+├── initialMessageCount: Int   # Max messages to include on first fetch (default 5)
+└── notificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet
 ```
 
 ### Session
@@ -287,6 +296,50 @@ Assigns persistent colors to Slack user IDs.
 
 **Color picker:** Users can click any name in the conversation view to open a 5x4 grid popover of the 20 preset colors. Selecting one persists the change.
 
+### NotificationService (ObservableObject, @MainActor)
+
+Manages notification delivery based on each schedule's `notificationMode`.
+
+**Three modes:**
+- **macosNotification** — Sends a `UNNotificationRequest` with schedule name as title and summary preview as body. Clicking the notification navigates to the schedule via `selectedScheduleIdFromNotification`.
+- **forcePopup** — Sets `forcePopupScheduleId` which AppDelegate observes to present an always-on-top `NSPanel`. The panel cannot be closed via the close button (only via Send or Ignore). Plays a "Glass" system sound on appearance.
+- **quiet** — No notification. Drafts are only visible via the sidebar indicator.
+
+**Permission management:**
+- `checkPermission()` queries `UNUserNotificationCenter` authorization status
+- `requestPermission()` requests authorization with `.alert`, `.sound`, `.badge` options
+- `openSystemPreferences()` deep-links to System Settings > Notifications
+
+**Delegate methods:**
+- `willPresent` returns `[.banner, .sound]` so notifications appear even when the app is frontmost
+- `didReceive` extracts `scheduleId` from notification `userInfo`, sets `selectedScheduleIdFromNotification`, and activates the app
+
+**Sidebar indicator:** `Schedule.hasUnresolvedDraft` checks if any session has `.pending` finalAction with a non-nil summary. This is displayed in `ScheduleRowView` regardless of notification mode.
+
+**Menu bar badge:** AppDelegate shows an orange count of schedules with unresolved drafts alongside the existing green (active) and red (failed) counts.
+
+### PromptStore (ObservableObject, @MainActor)
+
+Manages prompt history, saved (starred) prompts, and auto-tagging via Claude.
+
+**Models:**
+- `PromptTag`: id, name, colorIndex (indexes into `UserColorStore.presetColors`)
+- `SavedPrompt`: id, text, tags, isStarred, createdAt, updatedAt
+
+**History vs Saved:**
+- History prompts (unstarred) are limited to `maxHistoryCount` (configurable in settings, default 10). Oldest are trimmed on overflow.
+- Starred prompts are permanent and do not count toward the limit.
+
+**Auto-tagging:** When a prompt is created or edited, `ClaudeService.generateTags()` is called asynchronously. Claude receives the prompt text and all existing tags to maximize reuse. Returns 1-4 lowercase tags. Tags get random colors from the `UserColorStore.presetColors` palette.
+
+**Storage:** `~/Library/Application Support/SmartSlack/prompts.json` for prompts, `prompt_settings.json` for settings.
+
+**Integration points:**
+- `PromptInputView` replaces raw TextEditor in `AddScheduleFromLinkView` and `EditScheduleView` — shows a "Use Saved" button to open `PromptPickerView`
+- `ScheduleDetailView` header has a change-prompt button that opens `PromptPickerView`
+- `SettingsView` has a "Manage Prompts" button opening `PromptManagerView` and configurable history limit
+- Tags display uses `FlowLayout` (custom Layout) with colored capsule pills
+
 ---
 
 ## View Architecture
@@ -307,6 +360,8 @@ Injected environment objects:
 - ScheduleStore (scheduleStore)
 - SchedulerEngine (schedulerEngine)
 - LogService (logService)
+- NotificationService (notificationService)
+- PromptStore (promptStore)
 - UserColorStore (userColorStore)
 ```
 
@@ -374,7 +429,9 @@ Opens in a separate `NSWindow`. Features:
 
 ### Separate Windows
 
-History and Log Viewer open in separate `NSWindow` instances (created programmatically in MainView) rather than sheets or navigation destinations. Environment objects must be explicitly injected when creating these windows (they don't inherit from the main window hierarchy).
+History, Log Viewer, and Settings open in separate `NSWindow` instances (created programmatically in MainView) rather than sheets or navigation destinations. Environment objects must be explicitly injected when creating these windows (they don't inherit from the main window hierarchy).
+
+The Force Popup uses an `NSPanel` with `level = .floating` managed by AppDelegate. It observes `notificationService.forcePopupScheduleId` via Combine and cannot be dismissed via the close button (`windowShouldClose` returns `false`). Only Send or Ignore actions dismiss it by setting `forcePopupScheduleId = nil`.
 
 ---
 
@@ -469,6 +526,7 @@ All models use `JSONEncoder.slackEncoder` / `JSONDecoder.slackDecoder`:
 `Schedule.init(from:)` provides a custom decoder that defaults optional fields if missing from JSON:
 - `pendingMessages` defaults to `[]`
 - `initialMessageCount` defaults to `5`
+- `notificationMode` defaults to `.macosNotification`
 
 This ensures old JSON files load without errors.
 

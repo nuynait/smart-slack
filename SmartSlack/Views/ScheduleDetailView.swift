@@ -6,7 +6,9 @@ struct ScheduleDetailView: View {
     @EnvironmentObject var scheduleStore: ScheduleStore
     @EnvironmentObject var schedulerEngine: SchedulerEngine
     @EnvironmentObject var userColorStore: UserColorStore
+    @EnvironmentObject var promptStore: PromptStore
     @State private var showEditSheet = false
+    @State private var showPromptPicker = false
     @State private var colorPickerUserId: String?
 
     var body: some View {
@@ -81,6 +83,14 @@ struct ScheduleDetailView: View {
         .sheet(isPresented: $showEditSheet) {
             EditScheduleView(schedule: schedule)
         }
+        .sheet(isPresented: $showPromptPicker) {
+            PromptPickerView { selectedText in
+                var updated = schedule
+                updated.prompt = selectedText
+                scheduleStore.updateSchedule(updated)
+            }
+            .environmentObject(promptStore)
+        }
         .task(id: schedule.id) {
             resolveAllUserNames()
         }
@@ -129,6 +139,10 @@ struct ScheduleDetailView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
+                Label(notificationModeLabel, systemImage: notificationModeIcon)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
                 Label("Created: \(schedule.createdAt.formatted(date: .abbreviated, time: .shortened))", systemImage: "calendar")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -141,12 +155,23 @@ struct ScheduleDetailView: View {
             }
 
             if !schedule.prompt.isEmpty {
-                Text(schedule.prompt)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(8)
-                    .background(.quaternary)
-                    .cornerRadius(6)
+                HStack(alignment: .top) {
+                    Text(schedule.prompt)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        showPromptPicker = true
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Change prompt")
+                }
+                .padding(8)
+                .background(.quaternary)
+                .cornerRadius(6)
             }
         }
     }
@@ -175,6 +200,22 @@ struct ScheduleDetailView: View {
         case .thread: return "bubble.left.and.bubble.right"
         case .dm: return "person"
         case .dmgroup: return "person.3"
+        }
+    }
+
+    private var notificationModeLabel: String {
+        switch schedule.notificationMode {
+        case .macosNotification: return "Notification"
+        case .forcePopup: return "Force Popup"
+        case .quiet: return "Quiet"
+        }
+    }
+
+    private var notificationModeIcon: String {
+        switch schedule.notificationMode {
+        case .macosNotification: return "bell"
+        case .forcePopup: return "bell.badge"
+        case .quiet: return "bell.slash"
         }
     }
 

@@ -101,6 +101,35 @@ enum ClaudeService {
         return try await runClaude(prompt: fullPrompt, scheduleId: scheduleId)
     }
 
+    static func generateTags(promptText: String, existingTags: [String]) async throws -> [String] {
+        let existingList = existingTags.isEmpty
+            ? "None yet."
+            : existingTags.joined(separator: ", ")
+
+        let prompt = """
+        You are a tagging assistant. Given the following prompt text, generate 1-4 short tags that describe its purpose or category.
+
+        IMPORTANT RULES:
+        - Reuse existing tags when they fit. Only create new tags if no existing tag applies.
+        - Tags should be 1-2 words, lowercase
+        - Return ONLY a comma-separated list of tags, nothing else
+
+        Existing tags: \(existingList)
+
+        Prompt text:
+        \(promptText)
+
+        Tags:
+        """
+
+        let result = try await runClaudeSimple(prompt: prompt)
+        let tags = result
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        return Array(tags.prefix(4))
+    }
+
     static func cleanupOutput(for scheduleId: UUID) {
         let dir = outputDir.appendingPathComponent(scheduleId.uuidString)
         try? FileManager.default.removeItem(at: dir)
@@ -151,6 +180,45 @@ enum ClaudeService {
             }
             return line
         }.joined(separator: "\n")
+    }
+
+    private static func runClaudeSimple(prompt: String) async throws -> String {
+        let result: (status: Int32, stdout: String, stderr: String) = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                let stdoutPipe = Pipe()
+                let stderrPipe = Pipe()
+                let stdinPipe = Pipe()
+
+                process.executableURL = URL(fileURLWithPath: Constants.claudePath)
+                process.arguments = ["--print", "--output-format", "text"]
+                process.standardOutput = stdoutPipe
+                process.standardError = stderrPipe
+                process.standardInput = stdinPipe
+
+                do {
+                    try process.run()
+                    stdinPipe.fileHandleForWriting.write(prompt.data(using: .utf8)!)
+                    stdinPipe.fileHandleForWriting.closeFile()
+                    process.waitUntilExit()
+
+                    let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                    let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    continuation.resume(returning: (
+                        process.terminationStatus,
+                        String(data: stdoutData, encoding: .utf8) ?? "",
+                        String(data: stderrData, encoding: .utf8) ?? ""
+                    ))
+                } catch {
+                    continuation.resume(returning: (-1, "", error.localizedDescription))
+                }
+            }
+        }
+
+        guard result.status == 0 else {
+            throw ClaudeError.processError("Claude exited with status \(result.status): \(result.stderr)")
+        }
+        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func runClaude(prompt: String, scheduleId: UUID) async throws -> AnalysisResult {

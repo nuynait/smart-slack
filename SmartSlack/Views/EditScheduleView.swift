@@ -5,17 +5,20 @@ struct EditScheduleView: View {
     @EnvironmentObject var scheduleStore: ScheduleStore
     @EnvironmentObject var schedulerEngine: SchedulerEngine
     @EnvironmentObject var logService: LogService
+    @EnvironmentObject var promptStore: PromptStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String
     @State private var intervalSeconds: Double
     @State private var prompt: String
+    @State private var notificationMode: NotificationMode
 
     init(schedule: Schedule) {
         self.schedule = schedule
         _name = State(initialValue: schedule.name)
         _intervalSeconds = State(initialValue: Double(schedule.intervalSeconds))
         _prompt = State(initialValue: schedule.prompt)
+        _notificationMode = State(initialValue: schedule.notificationMode)
     }
 
     var body: some View {
@@ -56,13 +59,21 @@ struct EditScheduleView: View {
                         .formCard()
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Prompt")
+                        Text("Notification Mode")
                             .font(.headline)
-                        TextEditor(text: $prompt)
-                            .frame(minHeight: 80)
-                            .font(.body)
+                        Picker("", selection: $notificationMode) {
+                            Text("Notification").tag(NotificationMode.macosNotification)
+                            Text("Force Popup").tag(NotificationMode.forcePopup)
+                            Text("Quiet").tag(NotificationMode.quiet)
+                        }
+                        .pickerStyle(.segmented)
+                        Text(notificationModeDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     .formCard()
+
+                    PromptInputView(prompt: $prompt)
                 }
                 .padding(16)
             }
@@ -90,7 +101,18 @@ struct EditScheduleView: View {
             }
             .padding()
         }
-        .frame(width: 500, height: 450)
+        .frame(width: 500, height: 550)
+    }
+
+    private var notificationModeDescription: String {
+        switch notificationMode {
+        case .macosNotification:
+            return "Show a macOS notification when Claude responds. Click to jump to the schedule."
+        case .forcePopup:
+            return "Show an always-on-top popup with summary and draft. Must send or ignore to dismiss."
+        case .quiet:
+            return "No notification. Check drafts manually from the sidebar."
+        }
     }
 
     private func save() {
@@ -98,7 +120,14 @@ struct EditScheduleView: View {
         updated.name = name
         updated.intervalSeconds = Int(intervalSeconds)
         updated.prompt = prompt
+        updated.notificationMode = notificationMode
         scheduleStore.updateSchedule(updated)
+
+        // Save prompt to history if changed
+        if prompt != schedule.prompt {
+            let savedPrompt = promptStore.addPrompt(text: prompt)
+            Task { await promptStore.generateTags(for: savedPrompt.id) }
+        }
 
         // Restart timer with new interval if active
         if updated.status == .active {

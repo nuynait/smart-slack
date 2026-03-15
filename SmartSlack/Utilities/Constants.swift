@@ -51,4 +51,6 @@ enum Constants {
     static let draftSignature = "\n\n— drafted with Claude Code"
 
     static let userColorsFile: URL = appSupportDir.appendingPathComponent("user_colors.json")
+    static let promptsFile: URL = appSupportDir.appendingPathComponent("prompts.json")
+    static let promptSettingsFile: URL = appSupportDir.appendingPathComponent("prompt_settings.json")
 }

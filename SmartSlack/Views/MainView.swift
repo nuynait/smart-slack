@@ -47,6 +47,11 @@ struct MainView: View {
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                     .disabled(selectedScheduleId == nil)
 
+                    Button("Settings") {
+                        openSettings()
+                    }
+                    .keyboardShortcut(",", modifiers: .command)
+
                     Divider()
 
                     if let team = appVM.slackTeam, let user = appVM.slackUser {
@@ -63,6 +68,12 @@ struct MainView: View {
         }
         .sheet(isPresented: $showAddFromLinkSheet) {
             AddScheduleFromLinkView()
+        }
+        .onChange(of: appVM.notificationService.selectedScheduleIdFromNotification) { _, newId in
+            if let id = newId {
+                selectedScheduleId = id
+                appVM.notificationService.selectedScheduleIdFromNotification = nil
+            }
         }
     }
 
@@ -83,6 +94,18 @@ struct MainView: View {
         let window = NSWindow(contentViewController: controller)
         window.title = "Logs — \(name)"
         window.setContentSize(NSSize(width: 700, height: 500))
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func openSettings() {
+        let settingsView = SettingsView()
+            .environmentObject(appVM)
+            .environmentObject(appVM.notificationService)
+            .environmentObject(appVM.promptStore)
+        let controller = NSHostingController(rootView: settingsView)
+        let window = NSWindow(contentViewController: controller)
+        window.title = "SmartSlack Settings"
+        window.setContentSize(NSSize(width: 500, height: 350))
         window.makeKeyAndOrderFront(nil)
     }
 }

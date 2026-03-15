@@ -4,6 +4,7 @@ struct AddScheduleFromLinkView: View {
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
     @EnvironmentObject var schedulerEngine: SchedulerEngine
+    @EnvironmentObject var promptStore: PromptStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var link = ""
@@ -11,6 +12,7 @@ struct AddScheduleFromLinkView: View {
     @State private var intervalSeconds: Double = 300
     @State private var prompt = ""
     @State private var initialMessageCount = 5
+    @State private var notificationMode: NotificationMode = .macosNotification
     @State private var error: String?
     @State private var isResolving = false
     @State private var resolved: ResolvedLink?
@@ -101,13 +103,21 @@ struct AddScheduleFromLinkView: View {
                     .formCard()
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Prompt")
+                        Text("Notification Mode")
                             .font(.headline)
-                        TextEditor(text: $prompt)
-                            .frame(minHeight: 80)
-                            .font(.body)
+                        Picker("", selection: $notificationMode) {
+                            Text("Notification").tag(NotificationMode.macosNotification)
+                            Text("Force Popup").tag(NotificationMode.forcePopup)
+                            Text("Quiet").tag(NotificationMode.quiet)
+                        }
+                        .pickerStyle(.segmented)
+                        Text(notificationModeDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     .formCard()
+
+                    PromptInputView(prompt: $prompt)
 
                     if let error {
                         Text(error)
@@ -138,7 +148,7 @@ struct AddScheduleFromLinkView: View {
             }
             .padding()
         }
-        .frame(width: 500, height: 580)
+        .frame(width: 500, height: 680)
     }
 
     // MARK: - Link Parsing
@@ -258,12 +268,29 @@ struct AddScheduleFromLinkView: View {
             lastRun: nil,
             lastMessageTs: nil,
             sessions: [],
-            initialMessageCount: initialMessageCount
+            initialMessageCount: initialMessageCount,
+            notificationMode: notificationMode
         )
 
         scheduleStore.saveSchedule(schedule)
         schedulerEngine.startSchedule(schedule)
+
+        // Save prompt to history and generate tags
+        let savedPrompt = promptStore.addPrompt(text: prompt)
+        Task { await promptStore.generateTags(for: savedPrompt.id) }
+
         dismiss()
+    }
+
+    private var notificationModeDescription: String {
+        switch notificationMode {
+        case .macosNotification:
+            return "Show a macOS notification when Claude responds. Click to jump to the schedule."
+        case .forcePopup:
+            return "Show an always-on-top popup with summary and draft. Must send or ignore to dismiss."
+        case .quiet:
+            return "No notification. Check drafts manually from the sidebar."
+        }
     }
 
 }
