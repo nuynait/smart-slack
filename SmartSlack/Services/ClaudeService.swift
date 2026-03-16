@@ -5,6 +5,7 @@ struct AnalysisResult {
     let draftReply: String
     let promptSent: String
     let rawResponse: String
+    let skipped: Bool
 }
 
 enum ClaudeService {
@@ -17,6 +18,7 @@ enum ClaudeService {
         let dir = prepareOutputDir(for: scheduleId)
         let summaryPath = dir.appendingPathComponent("summary.md").path
         let draftPath = dir.appendingPathComponent("draft.txt").path
+        let decisionPath = dir.appendingPathComponent("decision.txt").path
         let fullPrompt = """
         You are monitoring a Slack channel/conversation called "\(channelName)".
         \(ownerContext)
@@ -26,16 +28,27 @@ enum ClaudeService {
 
         User instructions: \(prompt)
 
-        Based on the messages and instructions above, you MUST write exactly two files:
+        IMPORTANT: First, determine whether these messages are relevant based on the user instructions above.
+        The user instructions may contain filters (e.g., "only care about messages related to X" or "only if they mention Y").
+        If the messages do NOT match the user's filter criteria, you should SKIP this conversation.
 
-        1. Write a brief summary of what was discussed to: \(summaryPath)
+        You MUST write exactly three files:
+
+        1. Write your decision to: \(decisionPath)
+           - Write ONLY the single word "respond" or "skip" (nothing else)
+           - Write "skip" if the messages are not relevant based on the user instructions
+           - Write "respond" if the messages are relevant and warrant a reply
+
+        2. Write a brief summary of what was discussed to: \(summaryPath)
            - Use markdown formatting (headers, bullet points, bold, etc.) for readability
+           - Write this even if you decided to skip (so the user can see what was discussed)
 
-        2. Write your suggested reply to: \(draftPath)
+        3. Write your suggested reply to: \(draftPath)
            - Write the reply as if you are the owner speaking
            - Plain text only, this will be sent as a Slack message
+           - If you decided to skip, write a brief explanation of why you skipped (e.g., "Skipped: messages are about X, not related to the filter criteria")
 
-        Write BOTH files now. Do not output anything else.
+        Write ALL three files now. Do not output anything else.
         """
 
         return try await runClaude(prompt: fullPrompt, scheduleId: scheduleId)
@@ -68,6 +81,7 @@ enum ClaudeService {
         let dir = prepareOutputDir(for: scheduleId)
         let summaryPath = dir.appendingPathComponent("summary.md").path
         let draftPath = dir.appendingPathComponent("draft.txt").path
+        let decisionPath = dir.appendingPathComponent("decision.txt").path
 
         let fullPrompt = """
         You are monitoring a Slack channel/conversation called "\(channelName)".
@@ -86,16 +100,69 @@ enum ClaudeService {
 
         The user wants you to rewrite the draft. Their feedback: \(rewritePrompt)
 
-        You MUST write exactly two files:
+        You MUST write exactly three files:
 
-        1. Write an updated summary to: \(summaryPath)
+        1. Write "respond" to: \(decisionPath)
+
+        2. Write an updated summary to: \(summaryPath)
            - Use markdown formatting (headers, bullet points, bold, etc.) for readability
 
-        2. Write a new draft reply incorporating the user's feedback to: \(draftPath)
+        3. Write a new draft reply incorporating the user's feedback to: \(draftPath)
            - Write the reply as if you are the owner speaking
            - Plain text only, this will be sent as a Slack message
 
-        Write BOTH files now. Do not output anything else.
+        Write ALL three files now. Do not output anything else.
+        """
+
+        return try await runClaude(prompt: fullPrompt, scheduleId: scheduleId)
+    }
+
+    static func unskipRewrite(
+        messages: [SlackMessage],
+        allSummaries: [String],
+        originalPrompt: String,
+        channelName: String,
+        scheduleId: UUID,
+        ownerUserId: String? = nil,
+        ownerDisplayName: String? = nil,
+        imagePaths: [String] = [],
+        userNames: [String: String] = [:]
+    ) async throws -> AnalysisResult {
+        let messagesText = formatMessages(messages, userNames: userNames)
+        let ownerContext = ownerIdentityContext(userId: ownerUserId, displayName: ownerDisplayName)
+        let imageContext = imagePaths.isEmpty ? "" : "\n\nThe following images were attached to the messages. They have been provided as files for you to view:\n" + imagePaths.map { "- \($0)" }.joined(separator: "\n")
+        let summariesText = allSummaries.enumerated().map { "Session \($0.offset + 1): \($0.element)" }.joined(separator: "\n")
+        let dir = prepareOutputDir(for: scheduleId)
+        let summaryPath = dir.appendingPathComponent("summary.md").path
+        let draftPath = dir.appendingPathComponent("draft.txt").path
+        let decisionPath = dir.appendingPathComponent("decision.txt").path
+
+        let fullPrompt = """
+        You are monitoring a Slack channel/conversation called "\(channelName)".
+        \(ownerContext)
+        Here are the messages:
+
+        \(messagesText)\(imageContext)
+
+        Previous summaries:
+        \(summariesText)
+
+        Original instructions: \(originalPrompt)
+
+        CONTEXT: You previously analyzed these messages and decided to SKIP them because they didn't match the user's filter criteria. However, the user has now explicitly asked you to generate a summary and draft reply anyway. Disregard the filter criteria for this request and provide a helpful response.
+
+        You MUST write exactly three files:
+
+        1. Write "respond" to: \(decisionPath)
+
+        2. Write an updated summary to: \(summaryPath)
+           - Use markdown formatting (headers, bullet points, bold, etc.) for readability
+
+        3. Write a draft reply to: \(draftPath)
+           - Write the reply as if you are the owner speaking
+           - Plain text only, this will be sent as a Slack message
+
+        Write ALL three files now. Do not output anything else.
         """
 
         return try await runClaude(prompt: fullPrompt, scheduleId: scheduleId)
@@ -264,6 +331,7 @@ enum ClaudeService {
         // Read the files Claude wrote
         let summaryFile = dir.appendingPathComponent("summary.md")
         let draftFile = dir.appendingPathComponent("draft.txt")
+        let decisionFile = dir.appendingPathComponent("decision.txt")
 
         guard FileManager.default.fileExists(atPath: summaryFile.path) else {
             throw ClaudeError.parseError("Claude did not write summary.md")
@@ -275,7 +343,14 @@ enum ClaudeService {
         let summary = try String(contentsOf: summaryFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
         let draftReply = try String(contentsOf: draftFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return AnalysisResult(summary: summary, draftReply: draftReply, promptSent: prompt, rawResponse: result.stdout)
+        // Read decision file — default to "respond" if missing (backward compat)
+        var skipped = false
+        if FileManager.default.fileExists(atPath: decisionFile.path),
+           let decision = try? String(contentsOf: decisionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            skipped = decision == "skip"
+        }
+
+        return AnalysisResult(summary: summary, draftReply: draftReply, promptSent: prompt, rawResponse: result.stdout, skipped: skipped)
     }
 }
 

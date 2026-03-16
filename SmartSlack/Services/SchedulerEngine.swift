@@ -214,10 +214,11 @@ final class SchedulerEngine: ObservableObject {
                 timestamp: Date(),
                 messages: allMessages,
                 summary: result.summary,
-                draftReply: result.draftReply,
+                draftReply: result.skipped ? nil : result.draftReply,
                 draftHistory: [],
-                finalAction: .pending,
-                sentMessage: nil
+                finalAction: result.skipped ? .skipped : .pending,
+                sentMessage: nil,
+                skipReason: result.skipped ? result.draftReply : nil
             )
 
             // Update schedule, clear pending messages
@@ -228,8 +229,13 @@ final class SchedulerEngine: ObservableObject {
             updated.sessions.append(session)
             scheduleStore.updateSchedule(updated)
 
-            // Notify based on schedule's notification mode
-            notificationService?.notifySessionReady(schedule: updated, session: session)
+            // Notify based on skip status
+            if !result.skipped {
+                notificationService?.notifySessionReady(schedule: updated, session: session)
+            } else {
+                logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "Claude decided to skip: \(result.draftReply)")
+                notificationService?.notifySkippedSession(schedule: updated, session: session)
+            }
 
         } catch {
             logService.log(.error, scheduleId: schedule.id, sessionId: sessionId, message: "Error: \(error.localizedDescription)")

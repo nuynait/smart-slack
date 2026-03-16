@@ -16,6 +16,7 @@ struct AddScheduleFromLinkView: View {
     @State private var prompt = ""
     @State private var initialMessageCount = 5
     @State private var notificationMode: NotificationMode = .macosNotification
+    @State private var skipNotificationMode: NotificationMode = .quiet
     @State private var error: String?
     @State private var isResolving = false
     @State private var resolved: ResolvedLink?
@@ -137,6 +138,21 @@ struct AddScheduleFromLinkView: View {
                         Text(notificationModeDescription)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                    .formCard()
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("When Skipped")
+                            .font(.headline)
+                        Text("Notification when Claude skips based on your filter criteria")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $skipNotificationMode) {
+                            Text("Notification").tag(NotificationMode.macosNotification)
+                            Text("Force Popup").tag(NotificationMode.forcePopup)
+                            Text("Quiet").tag(NotificationMode.quiet)
+                        }
+                        .pickerStyle(.segmented)
                     }
                     .formCard()
 
@@ -330,7 +346,8 @@ struct AddScheduleFromLinkView: View {
             lastMessageTs: nil,
             sessions: [],
             initialMessageCount: initialMessageCount,
-            notificationMode: notificationMode
+            notificationMode: notificationMode,
+            skipNotificationMode: skipNotificationMode
         )
 
         scheduleStore.saveSchedule(schedule)

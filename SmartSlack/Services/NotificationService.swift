@@ -50,7 +50,40 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         }
     }
 
+    func notifySkippedSession(schedule: Schedule, session: Session) {
+        switch schedule.skipNotificationMode {
+        case .macosNotification:
+            sendSkippedMacOSNotification(schedule: schedule, session: session)
+        case .forcePopup:
+            NSSound(named: "Glass")?.play()
+            forcePopupScheduleId = schedule.id
+        case .quiet:
+            break
+        }
+    }
+
     // MARK: - macOS Notification
+
+    private func sendSkippedMacOSNotification(schedule: Schedule, session: Session) {
+        let content = UNMutableNotificationContent()
+        content.title = "\(schedule.name) — Skipped"
+        if let reason = session.skipReason {
+            content.body = String(reason.prefix(200))
+        } else if let summary = session.summary {
+            content.body = "Skipped: \(String(summary.prefix(180)))"
+        } else {
+            content.body = "Session skipped by Claude"
+        }
+        content.sound = .default
+        content.userInfo = ["scheduleId": schedule.id.uuidString]
+
+        let request = UNNotificationRequest(
+            identifier: "session-skip-\(session.sessionId.uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
 
     private func sendMacOSNotification(schedule: Schedule, session: Session) {
         let content = UNMutableNotificationContent()

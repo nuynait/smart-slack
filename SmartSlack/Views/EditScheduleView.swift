@@ -12,6 +12,7 @@ struct EditScheduleView: View {
     @State private var intervalSeconds: Double
     @State private var prompt: String
     @State private var notificationMode: NotificationMode
+    @State private var skipNotificationMode: NotificationMode
 
     init(schedule: Schedule) {
         self.schedule = schedule
@@ -19,6 +20,7 @@ struct EditScheduleView: View {
         _intervalSeconds = State(initialValue: Double(schedule.intervalSeconds))
         _prompt = State(initialValue: schedule.prompt)
         _notificationMode = State(initialValue: schedule.notificationMode)
+        _skipNotificationMode = State(initialValue: schedule.skipNotificationMode)
     }
 
     var body: some View {
@@ -73,6 +75,21 @@ struct EditScheduleView: View {
                     }
                     .formCard()
 
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("When Skipped")
+                            .font(.headline)
+                        Text("Notification when Claude skips based on your filter criteria")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $skipNotificationMode) {
+                            Text("Notification").tag(NotificationMode.macosNotification)
+                            Text("Force Popup").tag(NotificationMode.forcePopup)
+                            Text("Quiet").tag(NotificationMode.quiet)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .formCard()
+
                     PromptInputView(prompt: $prompt)
                 }
                 .padding(16)
@@ -121,6 +138,7 @@ struct EditScheduleView: View {
         updated.intervalSeconds = Int(intervalSeconds)
         updated.prompt = prompt
         updated.notificationMode = notificationMode
+        updated.skipNotificationMode = skipNotificationMode
         scheduleStore.updateSchedule(updated)
 
         // Save prompt to history if changed

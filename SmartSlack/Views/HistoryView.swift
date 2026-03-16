@@ -9,7 +9,7 @@ struct HistoryView: View {
     private var allEntries: [HistoryEntry] {
         scheduleStore.schedules.flatMap { schedule in
             schedule.sessions
-                .filter { $0.finalAction != .pending }
+                .filter { $0.finalAction != .pending && $0.finalAction != .skipped }
                 .map { HistoryEntry(schedule: schedule, session: $0) }
         }
         .sorted { $0.session.timestamp > $1.session.timestamp }
@@ -199,6 +199,22 @@ private struct HistoryEntryRow: View {
                         .background(.orange.opacity(0.05))
                         .cornerRadius(6)
                 }
+            } else if entry.session.finalAction == .skipped {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Skipped")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    if let reason = entry.session.skipReason {
+                        Text(reason)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.quaternary.opacity(0.5))
+                            .cornerRadius(6)
+                    }
+                }
             }
 
             // Draft history (rewrites)
@@ -239,12 +255,28 @@ private struct HistoryEntryRow: View {
     }
 
     private var actionBadge: some View {
-        Text(entry.session.finalAction == .sent ? "Sent" : "Ignored")
+        let label: String
+        let color: Color
+        switch entry.session.finalAction {
+        case .sent:
+            label = "Sent"
+            color = .green
+        case .ignored:
+            label = "Ignored"
+            color = .orange
+        case .skipped:
+            label = "Skipped"
+            color = .secondary
+        case .pending:
+            label = "Pending"
+            color = .blue
+        }
+        return Text(label)
             .font(.caption.bold())
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background(entry.session.finalAction == .sent ? .green.opacity(0.15) : .orange.opacity(0.15))
-            .foregroundStyle(entry.session.finalAction == .sent ? .green : .orange)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
             .clipShape(Capsule())
     }
 

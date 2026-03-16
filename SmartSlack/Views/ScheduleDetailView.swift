@@ -14,6 +14,7 @@ struct ScheduleDetailView: View {
     @State private var showActiveReply = false
     @State private var showEditSend = false
     @State private var showRewrite = false
+    @State private var triggerGenerateDraft = false
     @State private var colorPickerUserId: String?
     @State private var monitorThreadLink: String?
     @State private var showSendTarget = false
@@ -51,6 +52,7 @@ struct ScheduleDetailView: View {
                 showActiveReply: $showActiveReply,
                 showEditSend: $showEditSend,
                 showRewrite: $showRewrite,
+                triggerGenerateDraft: $triggerGenerateDraft,
                 scheduleStore: scheduleStore,
                 schedulerEngine: schedulerEngine,
                 keyboardNav: keyboardNav
@@ -326,8 +328,8 @@ struct ScheduleDetailView: View {
             }
 
             // Draft
-            if session.finalAction == .pending {
-                DraftView(schedule: schedule, session: session, showEditSend: $showEditSend, showRewrite: $showRewrite, showSendTarget: $showSendTarget, sendTargetDraft: $sendTargetDraft)
+            if session.finalAction == .pending || session.finalAction == .skipped {
+                DraftView(schedule: schedule, session: session, showEditSend: $showEditSend, showRewrite: $showRewrite, showSendTarget: $showSendTarget, sendTargetDraft: $sendTargetDraft, triggerGenerateDraft: $triggerGenerateDraft)
             } else {
                 completedActionView(session)
             }
@@ -382,8 +384,8 @@ struct ScheduleDetailView: View {
     private func completedActionView(_ session: Session) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionHeader(
-                session.finalAction == .sent ? "Sent" : "Ignored",
-                icon: session.finalAction == .sent ? "paperplane.fill" : "xmark.circle"
+                completedActionLabel(session),
+                icon: completedActionIcon(session)
             )
 
             if let sent = session.sentMessage {
@@ -392,7 +394,33 @@ struct ScheduleDetailView: View {
                     .background(.green.opacity(0.1))
                     .cornerRadius(8)
                     .textSelection(.enabled)
+            } else if session.finalAction == .ignored, let draft = session.draftReply {
+                Text(draft)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.05))
+                    .cornerRadius(8)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
+        }
+    }
+
+    private func completedActionLabel(_ session: Session) -> String {
+        switch session.finalAction {
+        case .sent: return "Sent"
+        case .ignored: return "Ignored"
+        case .skipped: return "Skipped"
+        default: return "Pending"
+        }
+    }
+
+    private func completedActionIcon(_ session: Session) -> String {
+        switch session.finalAction {
+        case .sent: return "paperplane.fill"
+        case .ignored: return "xmark.circle"
+        case .skipped: return "forward.fill"
+        default: return "clock"
         }
     }
 
@@ -561,6 +589,7 @@ private struct KeyboardNavModifier: ViewModifier {
     @Binding var showActiveReply: Bool
     @Binding var showEditSend: Bool
     @Binding var showRewrite: Bool
+    @Binding var triggerGenerateDraft: Bool
     let scheduleStore: ScheduleStore
     let schedulerEngine: SchedulerEngine
     @ObservedObject var keyboardNav: KeyboardNavigationState
@@ -587,7 +616,11 @@ private struct KeyboardNavModifier: ViewModifier {
             }
             .onChange(of: keyboardNav.rewriteDraft) { _, val in
                 if val {
-                    showRewrite = true
+                    if schedule.latestSession?.finalAction == .skipped {
+                        triggerGenerateDraft = true
+                    } else {
+                        showRewrite = true
+                    }
                     keyboardNav.rewriteDraft = false
                 }
             }

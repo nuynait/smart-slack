@@ -10,7 +10,7 @@ SmartSlack is a macOS menu bar application that:
 1. Monitors Slack conversations on user-defined schedules
 2. Feeds new messages to Claude Code CLI for analysis
 3. Presents AI-generated summaries and draft replies
-4. Lets the user send, rewrite, or ignore drafts
+4. Lets the user send, rewrite, ignore, or skip drafts (Claude can auto-skip based on user-defined filters)
 
 The app runs persistently in the menu bar. Closing the window does not stop monitoring.
 
@@ -61,8 +61,8 @@ SmartSlack/
 │   ├── MainView.swift               # NavigationSplitView + toolbar
 │   ├── SidebarView.swift            # Active/Completed/Failed tabs + list
 │   ├── ScheduleRowView.swift        # Row: status dot, name, countdown
-│   ├── ScheduleDetailView.swift     # Full detail: header, session, conversation
-│   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons
+│   ├── ScheduleDetailView.swift     # Full detail: header, session, conversation; shows DraftView for pending/skipped
+│   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons; skipped view with Generate Draft
 │   ├── EditSendOverlay.swift        # Overlay dialog: edit draft text before sending
 │   ├── RewriteOverlay.swift         # Overlay dialog: rewrite draft via Claude with instructions
 │   ├── SendTargetOverlay.swift      # Overlay: choose send to channel or reply in thread
@@ -71,7 +71,7 @@ SmartSlack/
 │   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link (supports pre-filled initialLink)
 │   ├── EditScheduleView.swift       # Edit schedule properties
 │   ├── IntervalPickerView.swift     # Preset buttons + adaptive slider
-│   ├── HistoryView.swift            # Paginated session history window
+│   ├── HistoryView.swift            # Paginated session history window (excludes pending/skipped)
 │   ├── LogViewerView.swift          # Filterable log viewer window with auto-scroll
 │   ├── MarkdownView.swift           # Markdown renderer for Claude summaries
 │   ├── SlackImageView.swift         # Async Slack image downloader + preview
@@ -128,8 +128,9 @@ Session
 ├── summary: String?            # Claude's summary
 ├── draftReply: String?         # Claude's suggested reply
 ├── draftHistory: [DraftEntry]  # Previous drafts from rewrites
-├── finalAction: FinalAction    # .pending | .sent | .ignored
-└── sentMessage: String?        # The actual text that was sent
+├── finalAction: FinalAction    # .pending | .sent | .ignored | .skipped
+├── sentMessage: String?        # The actual text that was sent
+└── skipReason: String?         # Why Claude decided to skip (when finalAction == .skipped)
 ```
 
 ### SlackMessage
@@ -185,20 +186,35 @@ Invokes Claude Code CLI as a subprocess.
 **Methods:**
 - `analyze(messages:, prompt:, channelName:, scheduleId:, ownerUserId:, ownerDisplayName:, imagePaths:, userNames:)` → `AnalysisResult`
 - `rewrite(messages:, allSummaries:, draftHistory:, originalPrompt:, rewritePrompt:, channelName:, scheduleId:, ownerUserId:, ownerDisplayName:, imagePaths:, userNames:)` → `AnalysisResult`
+- `unskipRewrite(messages:, allSummaries:, originalPrompt:, channelName:, scheduleId:, ownerUserId:, ownerDisplayName:, imagePaths:, userNames:)` → `AnalysisResult` — generates a draft for a previously skipped session, telling Claude to disregard filter criteria (no user rewrite prompt needed)
 - `cleanupOutput(for:)` — deletes output directory for a schedule
+
+**AnalysisResult:**
+```
+AnalysisResult
+├── summary: String?        # Claude's markdown summary
+├── draft: String?          # Draft reply text (or skip reason if skipped)
+├── skipped: Bool           # Whether Claude decided to skip based on user filters
+├── rawPrompt: String       # Full prompt sent to Claude
+└── rawResponse: String     # Raw stdout from Claude process
+```
 
 **How it works (file-based output):**
 1. Builds a text prompt with message history, owner context, image references, and user instructions
 2. Creates output directory: `~/Library/Application Support/SmartSlack/claude_output/{scheduleId}/`
-3. Clears any previous `summary.md` and `draft.txt` from the output directory
-4. Instructs Claude to write two files:
+3. Clears any previous `summary.md`, `draft.txt`, and `decision.txt` from the output directory
+4. Instructs Claude to write three files:
    - `summary.md` — markdown-formatted summary of the conversation
-   - `draft.txt` — plain text draft reply for Slack
+   - `draft.txt` — plain text draft reply for Slack (contains skip reason if skipped)
+   - `decision.txt` — either "respond" or "skip", based on whether the conversation matches the user's instruction filters
 5. Spawns `claude --print --output-format text --allowedTools Write` as a `Process`
 6. Writes prompt to stdin, closes stdin
 7. Waits for process to exit
-8. Reads `summary.md` and `draft.txt` from the output directory
-9. Returns `AnalysisResult` with summary, draft, raw prompt, and raw stdout
+8. Reads `summary.md`, `draft.txt`, and `decision.txt` from the output directory
+9. Sets `skipped` flag based on `decision.txt` content (true if "skip")
+10. Returns `AnalysisResult` with summary, draft, skipped flag, raw prompt, and raw stdout
+
+**Skip decision:** The `analyze` prompt instructs Claude to evaluate whether the conversation requires the owner's attention based on the user's prompt/filter criteria. Claude writes "respond" or "skip" to `decision.txt`. If skipped, `draft.txt` contains the reason for skipping. The `rewrite` method always writes "respond" to `decision.txt` (rewrites are never skipped). The `unskipRewrite` method explicitly tells Claude to disregard any filter criteria and generate a draft.
 
 **Why file-based output:** Previous approach asked Claude to output JSON with summary and draft_reply fields. This broke when markdown summaries contained characters that made JSON parsing unreliable (curly braces, newlines, special characters). Writing to separate files eliminates all parsing issues.
 
@@ -241,9 +257,10 @@ Manages the execution lifecycle of all schedules.
 8. Download images from messages to temp directory
 9. Call `ClaudeService.analyze()` with all messages + image paths
 10. Log the prompt sent and response received
-11. Create a `Session` with messages, summary, draft
-12. Update schedule: set `lastRun`, advance `lastMessageTs`, clear `pendingMessages`, append session
-13. On error: mark schedule as `.failed`, stop timer
+11. If `result.skipped`: create `Session` with `.skipped` finalAction, nil draftReply, and `skipReason` from draft text; skip notification
+12. Otherwise: create a `Session` with messages, summary, draft, `.pending` finalAction
+13. Update schedule: set `lastRun`, advance `lastMessageTs`, clear `pendingMessages`, append session
+14. On error: mark schedule as `.failed`, stop timer
 
 **Owner message handling:**
 - Messages from the token owner are detected by comparing `message.user` to the stored `ownerUserId`
@@ -320,7 +337,7 @@ Manages notification delivery based on each schedule's `notificationMode`.
 - `willPresent` returns `[.banner, .sound]` so notifications appear even when the app is frontmost
 - `didReceive` extracts `scheduleId` from notification `userInfo`, sets `selectedScheduleIdFromNotification`, and activates the app
 
-**Sidebar indicator:** `Schedule.hasUnresolvedDraft` checks if any session has `.pending` finalAction with a non-nil summary. This is displayed in `ScheduleRowView` regardless of notification mode.
+**Sidebar indicator:** `Schedule.hasUnresolvedDraft` checks if any session has `.pending` finalAction with a non-nil summary. This is displayed in `ScheduleRowView` regardless of notification mode. Skipped sessions do not trigger notifications or sidebar indicators.
 
 **Menu bar badge:** AppDelegate shows an orange count of schedules with unresolved drafts alongside the existing green (active) and red (failed) counts.
 
@@ -457,6 +474,7 @@ Vim-style keyboard navigation is implemented via `NSEvent.addLocalMonitorForEven
 | `j` / `k` | Move down/up in schedule list |
 | `h` / `l` | Cycle sidebar tabs left/right (wraps around) |
 | `p` | Open prompt picker as sheet |
+| `r` | Generate draft for skipped session (triggers unskip rewrite) |
 | `Esc` | Dismiss cheatsheet |
 
 **Prompt picker shortcuts (when prompt picker is open):**
@@ -506,7 +524,9 @@ countdown[id] -= 1
             ▼
           Claude.analyze(messages, prompt, images)
             │
-            ├─ Success → create Session, clear pendingMessages, reset countdown
+            ├─ Success + decision "respond" → create Session (.pending), notify, clear pendingMessages, reset countdown
+            │
+            ├─ Success + decision "skip" → create Session (.skipped, skipReason), skip notification, clear pendingMessages, reset countdown
             │
             └─ Error → mark schedule as .failed, stop timer
 ```
@@ -530,7 +550,12 @@ User sees draft in ScheduleDetailView (DraftView buttons)
   │         → Move current draft to draftHistory
   │         → Set new draft from Claude response
   │
-  └─ Ignore → set finalAction = .ignored
+  ├─ Ignore → set finalAction = .ignored
+  │
+  └─ (Skipped session) → DraftView shows skip reason + "Generate Draft" button
+       └─ Generate Draft → Claude.unskipRewrite()
+            → Disregards filter criteria, generates draft
+            → Session transitions from .skipped to .pending with new draft
 ```
 
 ### Authentication Flow
@@ -568,6 +593,9 @@ All models use `JSONEncoder.slackEncoder` / `JSONDecoder.slackDecoder`:
 - `initialMessageCount` defaults to `5`
 - `notificationMode` defaults to `.macosNotification`
 
+`Session.init(from:)` also handles backward compatibility:
+- `skipReason` defaults to `nil` if missing from JSON
+
 This ensures old JSON files load without errors.
 
 ### File Watching
@@ -587,7 +615,7 @@ Both trigger `loadSchedules()` which re-reads all JSON files from disk.
 - Path: `/opt/homebrew/bin/claude`
 - Arguments: `["--print", "--output-format", "text", "--allowedTools", "Write"]`
 - Input: prompt written to stdin, then stdin closed
-- Output: Claude writes `summary.md` and `draft.txt` to `~/Library/Application Support/SmartSlack/claude_output/{scheduleId}/`
+- Output: Claude writes `summary.md`, `draft.txt`, and `decision.txt` to `~/Library/Application Support/SmartSlack/claude_output/{scheduleId}/`
 - Mode: stateless (`--print`), no conversation history saved
 - The `--allowedTools Write` flag grants Claude the Write tool to create output files
 - The `--file` flag is NOT used (requires session token). Images are referenced in prompt text only.
@@ -652,7 +680,10 @@ Link format: `https://{workspace}.slack.com/archives/{channelId}/p{tsWithoutDot}
 
 ### Modifying the Claude prompt
 
-1. Edit `ClaudeService.swift` — `analyze()` for monitoring, `rewrite()` for rewrites
+1. Edit `ClaudeService.swift` — `analyze()` for monitoring, `rewrite()` for rewrites, `unskipRewrite()` for generating drafts on skipped sessions
 2. The prompt structure: system context → owner context → messages → image references → user instructions → file write instructions
-3. Claude is instructed to write `summary.md` (markdown) and `draft.txt` (plain text) to the schedule's output directory
+3. Claude is instructed to write `summary.md` (markdown), `draft.txt` (plain text), and `decision.txt` ("respond" or "skip") to the schedule's output directory
 4. Output paths are absolute paths passed in the prompt — Claude uses the Write tool to create them
+5. The `analyze` prompt includes skip logic: Claude evaluates user filter criteria and writes "skip" to `decision.txt` if the conversation doesn't need attention; `draft.txt` then contains the skip reason
+6. The `rewrite` prompt always writes "respond" to `decision.txt` (rewrites are never skipped)
+7. The `unskipRewrite` prompt tells Claude to disregard filter criteria and generate a draft regardless

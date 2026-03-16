@@ -9,10 +9,82 @@ struct DraftView: View {
     @Binding var showRewrite: Bool
     @Binding var showSendTarget: Bool
     @Binding var sendTargetDraft: String
+    @Binding var triggerGenerateDraft: Bool
     @State private var isSending = false
     @State private var error: String?
 
+    @State private var isGenerating = false
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if session.finalAction == .skipped {
+                skippedView
+            } else {
+                draftView
+            }
+        }
+        .onChange(of: triggerGenerateDraft) { _, trigger in
+            if trigger {
+                triggerGenerateDraft = false
+                Task { await generateDraft() }
+            }
+        }
+    }
+
+    private var skippedView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Label("Skipped", systemImage: "forward.fill")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+            }
+
+            if let reason = session.skipReason {
+                Text(reason)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.05))
+                    .cornerRadius(8)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let error {
+                Text(error)
+                    .foregroundStyle(.red)
+                    .font(.caption)
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    Task { await generateDraft() }
+                } label: {
+                    if isGenerating {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        HStack(spacing: 4) {
+                            Label("Generate Draft", systemImage: "arrow.triangle.2.circlepath")
+                            KeyboardHintView(key: "r")
+                        }
+                    }
+                }
+                .buttonStyle(.primary)
+                .disabled(isGenerating)
+
+                Button {
+                    ignore()
+                } label: {
+                    HStack(spacing: 4) {
+                        Label("Ignore", systemImage: "xmark")
+                        KeyboardHintView(key: "i")
+                    }
+                }
+                .buttonStyle(.secondary)
+                .disabled(isGenerating)
+            }
+        }
+    }
+
+    private var draftView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Draft Reply", systemImage: "pencil.and.outline")
                 .font(.headline)
@@ -114,6 +186,41 @@ struct DraftView: View {
         }
 
         isSending = false
+    }
+
+    private func generateDraft() async {
+        isGenerating = true
+        error = nil
+
+        do {
+            let allSummaries = schedule.sessions.compactMap(\.summary)
+
+            let result = try await ClaudeService.unskipRewrite(
+                messages: session.messages,
+                allSummaries: allSummaries,
+                originalPrompt: schedule.prompt,
+                channelName: schedule.channelName,
+                scheduleId: schedule.id,
+                ownerUserId: appVM.slackUserId,
+                ownerDisplayName: appVM.slackUserDisplayName,
+                userNames: appVM.userNameCache
+            )
+
+            var updated = schedule
+            if var lastSession = updated.sessions.last(where: { $0.sessionId == session.sessionId }),
+               let idx = updated.sessions.firstIndex(where: { $0.sessionId == session.sessionId }) {
+                lastSession.draftReply = result.draftReply
+                lastSession.summary = result.summary
+                lastSession.finalAction = .pending
+                lastSession.skipReason = nil
+                updated.sessions[idx] = lastSession
+            }
+            scheduleStore.updateSchedule(updated)
+        } catch {
+            self.error = error.localizedDescription
+        }
+
+        isGenerating = false
     }
 
     private func ignore() {
