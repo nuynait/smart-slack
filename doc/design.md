@@ -65,8 +65,9 @@ SmartSlack/
 │   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons
 │   ├── EditSendOverlay.swift        # Overlay dialog: edit draft text before sending
 │   ├── RewriteOverlay.swift         # Overlay dialog: rewrite draft via Claude with instructions
+│   ├── SendTargetOverlay.swift      # Overlay: choose send to channel or reply in thread
 │   ├── DraftHistoryView.swift       # Previous drafts with send fallback
-│   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link
+│   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link (supports pre-filled initialLink)
 │   ├── EditScheduleView.swift       # Edit schedule properties
 │   ├── IntervalPickerView.swift     # Preset buttons + adaptive slider
 │   ├── HistoryView.swift            # Paginated session history window
@@ -514,10 +515,14 @@ countdown[id] -= 1
 ```
 User sees draft in ScheduleDetailView (DraftView buttons)
   │
-  ├─ Send → SlackService.postMessage() → set finalAction = .sent
+  ├─ Send / Edit & Send
+  │    ├─ Thread schedule → send directly to thread
+  │    └─ Non-thread schedule → SendTargetOverlay
+  │         ├─ "Send to #channel" → postMessage(threadTs: nil)
+  │         └─ "Reply in thread" → pick message → postMessage(threadTs: msg.ts)
   │
   ├─ Edit & Send → opens EditSendOverlay (overlay dialog)
-  │    └─ User edits draft text → Send → SlackService.postMessage()
+  │    └─ User edits draft text → Send (same target flow as above)
   │
   ├─ Rewrite → opens RewriteOverlay (overlay dialog)
   │    └─ User enters rewrite instructions → Claude.rewrite()
@@ -587,6 +592,17 @@ Both trigger `loadSchedules()` which re-reads all JSON files from disk.
 - The `--file` flag is NOT used (requires session token). Images are referenced in prompt text only.
 - User names are resolved before calling Claude — all `<@USERID>` mentions and message authors are replaced with display names
 
+### Monitor Thread from Conversation
+
+For non-thread schedules (channel, DM, group DM), each message in the conversation view shows a "Monitor Thread" button. Clicking it:
+
+1. Constructs a Slack message link using `AppViewModel.slackMessageLink(channelId:messageTs:)` — requires `slackTeamUrl` from `auth.test`
+2. Opens `AddScheduleFromLinkView` with the link pre-filled via `initialLink` parameter
+3. Auto-resolves the link on appear, detecting it as a thread schedule
+4. User configures name, interval, prompt, and creates the thread schedule
+
+Link format: `https://{workspace}.slack.com/archives/{channelId}/p{tsWithoutDot}`
+
 ### Slack API Considerations
 
 - All API calls need `Authorization: Bearer <token>`
@@ -594,6 +610,7 @@ Both trigger `loadSchedules()` which re-reads all JSON files from disk.
 - Pagination: `conversations.list` uses cursor-based pagination
 - Message timestamps (`ts`) are used as cursors for incremental fetching via `oldest` parameter
 - DM channels have user IDs instead of names — resolved via `users.info`
+- Workspace URL (`slackTeamUrl`) stored from `auth.test` response for constructing message links
 
 ### Thread Safety
 

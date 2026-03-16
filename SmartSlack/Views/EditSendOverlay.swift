@@ -6,15 +6,19 @@ struct EditSendOverlay: View {
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
     @Binding var isPresented: Bool
+    @Binding var showSendTarget: Bool
+    @Binding var sendTargetDraft: String
     @State private var draftText: String
     @State private var isSending = false
     @State private var error: String?
     @FocusState private var isTextFocused: Bool
 
-    init(schedule: Schedule, session: Session, isPresented: Binding<Bool>) {
+    init(schedule: Schedule, session: Session, isPresented: Binding<Bool>, showSendTarget: Binding<Bool>, sendTargetDraft: Binding<String>) {
         self.schedule = schedule
         self.session = session
         self._isPresented = isPresented
+        self._showSendTarget = showSendTarget
+        self._sendTargetDraft = sendTargetDraft
         self._draftText = State(initialValue: session.draftReply ?? "")
     }
 
@@ -77,6 +81,8 @@ struct EditSendOverlay: View {
                                 ProgressView().controlSize(.small)
                                 Text("Sending...")
                             }
+                        } else if schedule.type != .thread {
+                            Label("Send to...", systemImage: "paperplane.fill")
                         } else {
                             Label("Send", systemImage: "paperplane.fill")
                         }
@@ -98,16 +104,23 @@ struct EditSendOverlay: View {
     }
 
     private func send() async {
+        if schedule.type != .thread {
+            // Route through send target picker
+            sendTargetDraft = draftText
+            isPresented = false
+            showSendTarget = true
+            return
+        }
+
         guard let slackService = appVM.slackService else { return }
         isSending = true
         error = nil
 
         do {
-            let threadTs = schedule.type == .thread ? schedule.threadTs : nil
             _ = try await slackService.postMessage(
                 channelId: schedule.channelId,
                 text: draftText,
-                threadTs: threadTs
+                threadTs: schedule.threadTs
             )
 
             var updated = schedule

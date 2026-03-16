@@ -6,6 +6,7 @@ final class AppViewModel: ObservableObject {
     @Published var isAuthenticated = false
     @Published var authError: String?
     @Published var slackTeam: String?
+    @Published var slackTeamUrl: String?
     @Published var slackUser: String?
     @Published var slackUserId: String?
     @Published var slackUserDisplayName: String?
@@ -53,6 +54,7 @@ final class AppViewModel: ObservableObject {
             slackService = service
             schedulerEngine.setSlackService(service)
             slackTeam = result.team
+            slackTeamUrl = result.url
             slackUser = result.user
             slackUserId = result.userId
             isAuthenticated = true
@@ -71,6 +73,7 @@ final class AppViewModel: ObservableObject {
         slackService = nil
         isAuthenticated = false
         slackTeam = nil
+        slackTeamUrl = nil
         slackUser = nil
         slackUserId = nil
         slackUserDisplayName = nil
@@ -101,6 +104,15 @@ final class AppViewModel: ObservableObject {
         userNameCache[userId] ?? userId
     }
 
+    /// Construct a Slack message link for use with AddScheduleFromLinkView.
+    /// Format: https://workspace.slack.com/archives/CHANNEL_ID/pTIMESTAMP
+    func slackMessageLink(channelId: String, messageTs: String) -> String? {
+        guard let baseUrl = slackTeamUrl?.trimmingCharacters(in: CharacterSet(charactersIn: "/")) else { return nil }
+        // Convert ts "1234567890.123456" -> "p1234567890123456"
+        let pTs = "p" + messageTs.replacingOccurrences(of: ".", with: "")
+        return "\(baseUrl)/archives/\(channelId)/\(pTs)"
+    }
+
     private func resolveOwnerProfile(service: SlackService, userId: String?) async {
         guard let userId else { return }
         if let info = try? await service.usersInfo(userId: userId) {
@@ -119,6 +131,7 @@ final class AppViewModel: ObservableObject {
             let result = try await slackService.authTest()
             if result.ok {
                 slackTeam = result.team
+                slackTeamUrl = result.url
                 slackUser = result.user
                 slackUserId = result.userId
                 await resolveOwnerProfile(service: slackService, userId: result.userId)

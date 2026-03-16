@@ -5,6 +5,8 @@ struct DraftHistoryView: View {
     let session: Session
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @Binding var showSendTarget: Bool
+    @Binding var sendTargetDraft: String
     @State private var sendingId: UUID?
     @State private var error: String?
 
@@ -36,12 +38,17 @@ struct DraftHistoryView: View {
 
                         if session.finalAction == .pending {
                             Button {
-                                Task { await send(entry.draft) }
+                                if schedule.type != .thread {
+                                    sendTargetDraft = entry.draft
+                                    showSendTarget = true
+                                } else {
+                                    Task { await send(entry.draft) }
+                                }
                             } label: {
                                 if sendingId == entry.id {
                                     ProgressView().controlSize(.mini)
                                 } else {
-                                    Text("Send")
+                                    Text(schedule.type != .thread ? "Send to..." : "Send")
                                         .font(.caption)
                                 }
                             }

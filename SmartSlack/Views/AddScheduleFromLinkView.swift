@@ -7,6 +7,9 @@ struct AddScheduleFromLinkView: View {
     @EnvironmentObject var promptStore: PromptStore
     @Environment(\.dismiss) private var dismiss
 
+    var initialLink: String = ""
+    var initialAsThread: Bool = false
+
     @State private var link = ""
     @State private var name = ""
     @State private var intervalSeconds: Double = 300
@@ -71,6 +74,26 @@ struct AddScheduleFromLinkView: View {
                                 Label("Thread: \(resolved.threadTs ?? "")", systemImage: "bubble.left.and.bubble.right")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                            }
+
+                            if resolved.type == .thread, resolved.messageTs != nil {
+                                Button {
+                                    Task { await convertToOriginalType() }
+                                } label: {
+                                    Label("Revert to \(resolved.channelName)", systemImage: "arrow.uturn.backward")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.blue)
+                            } else if resolved.type != .thread, resolved.messageTs != nil {
+                                Button {
+                                    convertToThread()
+                                } label: {
+                                    Label("Monitor as Thread", systemImage: "bubble.left.and.bubble.right")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.blue)
                             }
                         }
                         .formCard()
@@ -149,6 +172,12 @@ struct AddScheduleFromLinkView: View {
             .padding()
         }
         .frame(width: 500, height: 680)
+        .onAppear {
+            if !initialLink.isEmpty && link.isEmpty {
+                link = initialLink
+                Task { await resolveLink() }
+            }
+        }
     }
 
     // MARK: - Link Parsing
@@ -193,8 +222,14 @@ struct AddScheduleFromLinkView: View {
                 channelId: parsed.channelId,
                 channelName: channelName,
                 type: type,
-                threadTs: parsed.threadTs
+                threadTs: parsed.threadTs,
+                messageTs: parsed.messageTs
             )
+
+            // Auto-convert to thread if requested (e.g. from "Monitor Thread" button)
+            if initialAsThread && type != .thread {
+                convertToThread()
+            }
 
             if name.isEmpty {
                 name = channelName
@@ -204,6 +239,32 @@ struct AddScheduleFromLinkView: View {
         }
 
         isResolving = false
+    }
+
+    private func convertToThread() {
+        guard var r = resolved, r.type != .thread, let ts = r.messageTs else { return }
+        r.type = .thread
+        r.threadTs = ts
+        resolved = r
+    }
+
+    private func convertToOriginalType() async {
+        // Re-resolve to get the original type back
+        guard let parsed = parseSlackLink(link),
+              let slackService = appVM.slackService else { return }
+        do {
+            let channel = try await slackService.conversationsInfo(channelId: parsed.channelId)
+            var r = resolved
+            if channel.isIm == true {
+                r?.type = .dm
+            } else if channel.isMpim == true {
+                r?.type = .dmgroup
+            } else {
+                r?.type = .channel
+            }
+            r?.threadTs = parsed.threadTs
+            resolved = r
+        } catch {}
     }
 
     private struct ParsedLink {
@@ -300,8 +361,9 @@ struct AddScheduleFromLinkView: View {
 struct ResolvedLink {
     let channelId: String
     let channelName: String
-    let type: ScheduleType
-    let threadTs: String?
+    var type: ScheduleType
+    var threadTs: String?
+    let messageTs: String?
 
     var typeName: String {
         switch type {

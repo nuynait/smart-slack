@@ -15,6 +15,9 @@ struct ScheduleDetailView: View {
     @State private var showEditSend = false
     @State private var showRewrite = false
     @State private var colorPickerUserId: String?
+    @State private var monitorThreadLink: String?
+    @State private var showSendTarget = false
+    @State private var sendTargetDraft = ""
 
     var body: some View {
         contentView
@@ -29,6 +32,12 @@ struct ScheduleDetailView: View {
                     scheduleStore.updateSchedule(updated)
                 }
                 .environmentObject(promptStore)
+            }
+            .sheet(isPresented: Binding(
+                get: { monitorThreadLink != nil },
+                set: { if !$0 { monitorThreadLink = nil } }
+            )) {
+                AddScheduleFromLinkView(initialLink: monitorThreadLink ?? "", initialAsThread: true)
             }
             .task(id: schedule.id) { resolveAllUserNames() }
             .onChange(of: schedule.sessions.count) { _, _ in resolveAllUserNames() }
@@ -49,10 +58,13 @@ struct ScheduleDetailView: View {
                     ActiveReplyView(schedule: schedule, isPresented: $showActiveReply)
                 }
                 if showEditSend, let session = schedule.latestSession {
-                    EditSendOverlay(schedule: schedule, session: session, isPresented: $showEditSend)
+                    EditSendOverlay(schedule: schedule, session: session, isPresented: $showEditSend, showSendTarget: $showSendTarget, sendTargetDraft: $sendTargetDraft)
                 }
                 if showRewrite, let session = schedule.latestSession {
                     RewriteOverlay(schedule: schedule, session: session, isPresented: $showRewrite)
+                }
+                if showSendTarget {
+                    SendTargetOverlay(schedule: schedule, draftText: sendTargetDraft, isPresented: $showSendTarget)
                 }
             }
     }
@@ -306,7 +318,7 @@ struct ScheduleDetailView: View {
 
             // Draft
             if session.finalAction == .pending {
-                DraftView(schedule: schedule, session: session, showEditSend: $showEditSend, showRewrite: $showRewrite)
+                DraftView(schedule: schedule, session: session, showEditSend: $showEditSend, showRewrite: $showRewrite, showSendTarget: $showSendTarget, sendTargetDraft: $sendTargetDraft)
             } else {
                 completedActionView(session)
             }
@@ -324,7 +336,7 @@ struct ScheduleDetailView: View {
 
             // Draft History
             if !session.draftHistory.isEmpty {
-                DraftHistoryView(schedule: schedule, session: session)
+                DraftHistoryView(schedule: schedule, session: session, showSendTarget: $showSendTarget, sendTargetDraft: $sendTargetDraft)
             }
 
             // Conversation (newest on top)
@@ -408,10 +420,27 @@ struct ScheduleDetailView: View {
                     messageImages(message.imageFiles)
                 }
 
-                if let date = slackTsToDate(message.ts) {
-                    Text(Self.messageTimestampFormatter.string(from: date))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                HStack(spacing: 8) {
+                    if let date = slackTsToDate(message.ts) {
+                        Text(Self.messageTimestampFormatter.string(from: date))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    if schedule.type != .thread, let ts = message.ts,
+                       let link = appVM.slackMessageLink(channelId: schedule.channelId, messageTs: ts) {
+                        Button {
+                            monitorThreadLink = link
+                        } label: {
+                            HStack(spacing: 2) {
+                                Image(systemName: "bubble.left.and.bubble.right")
+                                Text("Monitor Thread")
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(.blue.opacity(0.8))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }

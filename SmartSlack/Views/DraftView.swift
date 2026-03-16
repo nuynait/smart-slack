@@ -7,6 +7,8 @@ struct DraftView: View {
     @EnvironmentObject var scheduleStore: ScheduleStore
     @Binding var showEditSend: Bool
     @Binding var showRewrite: Bool
+    @Binding var showSendTarget: Bool
+    @Binding var sendTargetDraft: String
     @State private var isSending = false
     @State private var error: String?
 
@@ -32,10 +34,18 @@ struct DraftView: View {
 
             HStack(spacing: 12) {
                 Button {
-                    Task { await send(draft: session.draftReply ?? "") }
+                    let draft = session.draftReply ?? ""
+                    if schedule.type != .thread {
+                        sendTargetDraft = draft
+                        showSendTarget = true
+                    } else {
+                        Task { await send(draft: draft) }
+                    }
                 } label: {
                     if isSending {
                         ProgressView().controlSize(.small)
+                    } else if schedule.type != .thread {
+                        Label("Send to...", systemImage: "paperplane.fill")
                     } else {
                         Label("Send", systemImage: "paperplane.fill")
                     }
