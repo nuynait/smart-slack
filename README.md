@@ -7,6 +7,7 @@ A macOS menu bar app that monitors Slack channels, threads, and DMs on configura
 - **Schedule-based monitoring** - Set up recurring checks on any Slack channel, thread, DM, or group DM with intervals from 5 seconds to 24 hours
 - **AI-powered analysis** - Claude reads new messages and generates a summary + draft reply based on your custom prompt
 - **Smart filtering** - Add filter criteria to your prompt (e.g., "only care about native development") and Claude auto-skips irrelevant conversations, with configurable notification for skipped sessions
+- **Claude memory** - Claude automatically tracks information across sessions when your prompt asks it to (e.g., "remember which PRs you've seen"). Memory persists per schedule and is shown in the UI
 - **Draft workflow** - Review drafts, rewrite with feedback, browse draft history, or ignore
 - **Owner awareness** - Recognizes your own messages, skips Claude when only you posted, and drafts in your voice
 - **Image support** - Downloads and previews image attachments from Slack messages
@@ -35,6 +36,11 @@ Review Claude's draft, then Edit & Send (`e`), Rewrite (`r`), Active Reply (`a`)
 Claude auto-detects filter criteria in your prompt and skips irrelevant conversations. Skipped sessions show the reason and a "Generate Draft" button to override.
 
 ![Smart Filtering](screenshots/skipped-with-filter-on-prompt.png)
+
+### Claude Memory
+Claude tracks information across sessions when your prompt includes memory instructions. The purple badge shows what will be memorized, and each session displays a report of what was saved.
+
+![Claude Memory](screenshots/memory.png)
 
 ### Send Target Picker
 Choose to send to the channel or reply in a specific message's thread.
@@ -182,7 +188,8 @@ SmartSlack/
 │   ├── SlackService.swift              # Slack REST API client (actor)
 │   ├── ClaudeService.swift             # Claude CLI subprocess
 │   ├── SchedulerEngine.swift           # Per-schedule timers + execution
-│   ├── ScheduleStore.swift             # JSON file persistence
+│   ├── ScheduleStore.swift             # JSON file persistence + migration
+│   ├── MemoryStore.swift               # Per-schedule Claude memory files
 │   ├── LogService.swift                # Event logging
 │   ├── KeychainService.swift           # Secure token storage
 │   ├── UserColorStore.swift            # User color assignments
@@ -203,7 +210,9 @@ All data is stored locally:
 
 | Data | Location |
 |------|----------|
-| Schedules | `~/Library/Application Support/SmartSlack/schedules/*.json` |
+| Schedules | `~/Library/Application Support/SmartSlack/schedulers/{uuid}/schedule.json` |
+| Claude output | `~/Library/Application Support/SmartSlack/schedulers/{uuid}/claude_output/` |
+| Claude memory | `~/Library/Application Support/SmartSlack/schedulers/{uuid}/memory.md` |
 | Logs | `~/Library/Application Support/SmartSlack/logs/*.log` |
 | User colors | `~/Library/Application Support/SmartSlack/user_colors.json` |
 | Prompts | `~/Library/Application Support/SmartSlack/prompts.json` |
