@@ -15,6 +15,10 @@ struct DraftView: View {
 
     @State private var isGenerating = false
 
+    // Auto-send countdown
+    @State private var autoSendCountdown: Int = 10
+    @State private var autoSendTimer: Timer?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if session.finalAction == .skipped {
@@ -28,6 +32,21 @@ struct DraftView: View {
                 triggerGenerateDraft = false
                 Task { await generateDraft() }
             }
+        }
+        .onChange(of: schedule.autoSend) { _, autoSend in
+            if autoSend && session.finalAction == .pending && session.draftReply != nil {
+                startAutoSendCountdown()
+            } else {
+                cancelAutoSendCountdown()
+            }
+        }
+        .onAppear {
+            if schedule.autoSend && session.finalAction == .pending && session.draftReply != nil {
+                startAutoSendCountdown()
+            }
+        }
+        .onDisappear {
+            cancelAutoSendCountdown()
         }
     }
 
@@ -104,74 +123,137 @@ struct DraftView: View {
                     .font(.caption)
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    let draft = session.draftReply ?? ""
-                    if schedule.type != .thread {
-                        sendTargetDraft = draft
-                        showSendTarget = true
-                    } else {
-                        Task { await send(draft: draft) }
-                    }
-                } label: {
-                    if isSending {
-                        ProgressView().controlSize(.small)
-                    } else if schedule.type != .thread {
-                        Label("Send to...", systemImage: "paperplane.fill")
-                    } else {
-                        Label("Send", systemImage: "paperplane.fill")
-                    }
-                }
-                .buttonStyle(.primary)
-                .disabled(session.draftReply == nil || isSending)
-
-                Button {
-                    showEditSend = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Label("Edit & Send", systemImage: "pencil")
-                        KeyboardHintView(key: "e")
-                    }
-                }
-                .buttonStyle(.secondary)
-                .disabled(session.draftReply == nil || isSending)
-
-                Button {
-                    showRewrite = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
-                        KeyboardHintView(key: "r")
-                    }
-                }
-                .buttonStyle(.secondary)
-                .disabled(session.draftReply == nil || isSending)
-
-                Button {
-                    ignore()
-                } label: {
-                    HStack(spacing: 4) {
-                        Label("Ignore", systemImage: "xmark")
-                        KeyboardHintView(key: "i")
-                    }
-                }
-                .buttonStyle(.secondary)
-                .disabled(isSending)
+            if schedule.autoSend {
+                autoSendCountdownView
+            } else {
+                manualActionButtons
             }
         }
     }
 
-    private func send(draft: String) async {
+    private var autoSendCountdownView: some View {
+        HStack(spacing: 12) {
+            if isSending {
+                ProgressView().controlSize(.small)
+                Text("Sending...")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.blue)
+            } else {
+                Image(systemName: "timer")
+                    .foregroundStyle(.blue)
+                Text("Auto-sending in \(autoSendCountdown)s")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.blue)
+
+                ProgressView(value: Double(10 - autoSendCountdown), total: 10)
+                    .tint(.blue)
+                    .frame(maxWidth: 120)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.blue.opacity(0.08))
+        .cornerRadius(8)
+    }
+
+    private var manualActionButtons: some View {
+        HStack(spacing: 12) {
+            Button {
+                let draft = session.draftReply ?? ""
+                if schedule.type != .thread {
+                    sendTargetDraft = draft
+                    showSendTarget = true
+                } else {
+                    Task { await send(draft: draft) }
+                }
+            } label: {
+                if isSending {
+                    ProgressView().controlSize(.small)
+                } else if schedule.type != .thread {
+                    Label("Send to...", systemImage: "paperplane.fill")
+                } else {
+                    Label("Send", systemImage: "paperplane.fill")
+                }
+            }
+            .buttonStyle(.primary)
+            .disabled(session.draftReply == nil || isSending)
+
+            Button {
+                showEditSend = true
+            } label: {
+                HStack(spacing: 4) {
+                    Label("Edit & Send", systemImage: "pencil")
+                    KeyboardHintView(key: "e")
+                }
+            }
+            .buttonStyle(.secondary)
+            .disabled(session.draftReply == nil || isSending)
+
+            Button {
+                showRewrite = true
+            } label: {
+                HStack(spacing: 4) {
+                    Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
+                    KeyboardHintView(key: "r")
+                }
+            }
+            .buttonStyle(.secondary)
+            .disabled(session.draftReply == nil || isSending)
+
+            Button {
+                ignore()
+            } label: {
+                HStack(spacing: 4) {
+                    Label("Ignore", systemImage: "xmark")
+                    KeyboardHintView(key: "i")
+                }
+            }
+            .buttonStyle(.secondary)
+            .disabled(isSending)
+        }
+    }
+
+    // MARK: - Auto-send Timer
+
+    private func startAutoSendCountdown() {
+        cancelAutoSendCountdown()
+        autoSendCountdown = 10
+        autoSendTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            Task { @MainActor in
+                autoSendCountdown -= 1
+                if autoSendCountdown <= 0 {
+                    cancelAutoSendCountdown()
+                    await autoSend()
+                }
+            }
+        }
+    }
+
+    private func cancelAutoSendCountdown() {
+        autoSendTimer?.invalidate()
+        autoSendTimer = nil
+        autoSendCountdown = 10
+    }
+
+    private func autoSend() async {
+        guard let draft = session.draftReply else { return }
+        let threadTs = schedule.type == .thread ? schedule.threadTs : nil
+        await send(draft: draft, threadTs: threadTs)
+    }
+
+    // MARK: - Actions
+
+    private func send(draft: String, threadTs: String? = nil) async {
         guard let slackService = appVM.slackService else { return }
         isSending = true
         error = nil
 
         do {
-            let threadTs = schedule.type == .thread ? schedule.threadTs : nil
+            let ts = threadTs ?? (schedule.type == .thread ? schedule.threadTs : nil)
             _ = try await slackService.postMessage(
                 channelId: schedule.channelId,
                 text: draft,
-                threadTs: threadTs
+                threadTs: ts
             )
 
             var updated = schedule

@@ -95,6 +95,7 @@ struct Schedule: Codable, Identifiable, Hashable {
     var skipNotificationMode: NotificationMode
     var filterSummary: String?
     var memorySummary: String?
+    var autoSend: Bool
 
     /// Latest session that was processed by Claude (has a summary).
     var latestSession: Session? {
@@ -107,7 +108,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         return latest.finalAction == .pending
     }
 
-    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification, skipNotificationMode: NotificationMode = .quiet, filterSummary: String? = nil, memorySummary: String? = nil) {
+    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification, skipNotificationMode: NotificationMode = .quiet, filterSummary: String? = nil, memorySummary: String? = nil, autoSend: Bool = false) {
         self.id = id
         self.name = name
         self.type = type
@@ -127,6 +128,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         self.skipNotificationMode = skipNotificationMode
         self.filterSummary = filterSummary
         self.memorySummary = memorySummary
+        self.autoSend = autoSend
     }
 
     init(from decoder: Decoder) throws {
@@ -150,5 +152,6 @@ struct Schedule: Codable, Identifiable, Hashable {
         skipNotificationMode = try container.decodeIfPresent(NotificationMode.self, forKey: .skipNotificationMode) ?? .quiet
         filterSummary = try container.decodeIfPresent(String.self, forKey: .filterSummary)
         memorySummary = try container.decodeIfPresent(String.self, forKey: .memorySummary)
+        autoSend = try container.decodeIfPresent(Bool.self, forKey: .autoSend) ?? false
     }
 }

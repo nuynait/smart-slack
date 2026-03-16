@@ -243,6 +243,7 @@ struct ScheduleDetailView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "line.3.horizontal.decrease.circle.fill")
                         .foregroundStyle(.orange)
+                        .frame(width: 16, alignment: .center)
                     Text("Filter: \(filter)")
                         .font(.caption.bold())
                         .foregroundStyle(.orange)
@@ -268,6 +269,7 @@ struct ScheduleDetailView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "brain")
                         .foregroundStyle(.purple)
+                        .frame(width: 16, alignment: .center)
                     Text("Memory: \(memorySummary)")
                         .font(.caption.bold())
                         .foregroundStyle(.purple)
@@ -389,6 +391,9 @@ struct ScheduleDetailView: View {
                     .background(.purple.opacity(0.05))
                     .cornerRadius(8)
             }
+
+            // Auto-send toggle
+            autoSendToggle
 
             // Draft
             if session.finalAction == .pending || session.finalAction == .skipped {
@@ -629,6 +634,39 @@ struct ScheduleDetailView: View {
         return result
     }
 
+    private var autoSendToggle: some View {
+        HStack(spacing: 8) {
+            if schedule.autoSend {
+                Image(systemName: "bolt.fill")
+                    .foregroundStyle(.white)
+                    .font(.caption)
+            }
+            Toggle(isOn: Binding(
+                get: { schedule.autoSend },
+                set: { newValue in
+                    var updated = schedule
+                    updated.autoSend = newValue
+                    scheduleStore.updateSchedule(updated)
+                }
+            )) {
+                Text("Auto Send")
+                    .font(.caption.bold())
+                    .foregroundStyle(schedule.autoSend ? .white : .secondary)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(schedule.autoSend ? Color.blue : Color.clear)
+        .cornerRadius(6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(schedule.autoSend ? Color.clear : Color.gray.opacity(0.3), lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.2), value: schedule.autoSend)
+    }
+
     private func sectionHeader(_ title: String, icon: String) -> some View {
         Label(title, systemImage: icon)
             .font(.headline)
@@ -673,29 +711,35 @@ private struct KeyboardNavModifier: ViewModifier {
             }
             .onChange(of: keyboardNav.editAndSend) { _, val in
                 if val {
-                    showEditSend = true
+                    if !schedule.autoSend {
+                        showEditSend = true
+                    }
                     keyboardNav.editAndSend = false
                 }
             }
             .onChange(of: keyboardNav.rewriteDraft) { _, val in
                 if val {
-                    if schedule.latestSession?.finalAction == .skipped {
-                        triggerGenerateDraft = true
-                    } else {
-                        showRewrite = true
+                    if !schedule.autoSend {
+                        if schedule.latestSession?.finalAction == .skipped {
+                            triggerGenerateDraft = true
+                        } else {
+                            showRewrite = true
+                        }
                     }
                     keyboardNav.rewriteDraft = false
                 }
             }
             .onChange(of: keyboardNav.ignoreDraft) { _, val in
                 if val {
-                    // Ignore the current draft directly
-                    var updated = schedule
-                    if var lastSession = updated.sessions.last {
-                        lastSession.finalAction = .ignored
-                        updated.sessions[updated.sessions.count - 1] = lastSession
+                    if !schedule.autoSend {
+                        // Ignore the current draft directly
+                        var updated = schedule
+                        if var lastSession = updated.sessions.last {
+                            lastSession.finalAction = .ignored
+                            updated.sessions[updated.sessions.count - 1] = lastSession
+                        }
+                        scheduleStore.updateSchedule(updated)
                     }
-                    scheduleStore.updateSchedule(updated)
                     keyboardNav.ignoreDraft = false
                 }
             }

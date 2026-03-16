@@ -199,6 +199,7 @@ final class SchedulerEngine: ObservableObject {
                 prompt: schedule.prompt,
                 channelName: schedule.channelName,
                 scheduleId: schedule.id,
+                hasFilter: schedule.filterSummary != nil,
                 ownerUserId: ownerUserId,
                 ownerDisplayName: ownerDisplayName,
                 imagePaths: imagePaths,

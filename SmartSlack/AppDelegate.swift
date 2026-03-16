@@ -238,10 +238,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let controller = NSHostingController(rootView: popupView)
         let panel = NSPanel(contentViewController: controller)
         panel.title = "SmartSlack — \(schedule.name)"
-        panel.setContentSize(NSSize(width: 600, height: 650))
-        panel.level = .floating
-        panel.styleMask = [.titled, .nonactivatingPanel, .utilityWindow]
+        panel.setContentSize(NSSize(width: 650, height: 700))
+        panel.level = .screenSaver
+        panel.styleMask = [.titled, .utilityWindow]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
         panel.delegate = self
         panel.center()
         panel.makeKeyAndOrderFront(nil)

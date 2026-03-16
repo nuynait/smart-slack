@@ -11,7 +11,7 @@ struct AnalysisResult {
 
 enum ClaudeService {
 
-    static func analyze(messages: [SlackMessage], prompt: String, channelName: String, scheduleId: UUID, ownerUserId: String? = nil, ownerDisplayName: String? = nil, imagePaths: [String] = [], userNames: [String: String] = [:]) async throws -> AnalysisResult {
+    static func analyze(messages: [SlackMessage], prompt: String, channelName: String, scheduleId: UUID, hasFilter: Bool = false, ownerUserId: String? = nil, ownerDisplayName: String? = nil, imagePaths: [String] = [], userNames: [String: String] = [:]) async throws -> AnalysisResult {
         let messagesText = formatMessages(messages, userNames: userNames)
         let ownerContext = ownerIdentityContext(userId: ownerUserId, displayName: ownerDisplayName)
         let memoryFilePath = Constants.memoryFile(for: scheduleId).path
@@ -22,6 +22,20 @@ enum ClaudeService {
         let draftPath = dir.appendingPathComponent("draft.txt").path
         let decisionPath = dir.appendingPathComponent("decision.txt").path
         let memoryReportPath = dir.appendingPathComponent("memory.md").path
+        let filterInstruction: String
+        if hasFilter {
+            filterInstruction = """
+            IMPORTANT: First, determine whether these messages are relevant based on the user instructions above.
+            The user instructions may contain filters (e.g., "only care about messages related to X" or "only if they mention Y").
+            If the messages do NOT match the user's filter criteria, you should SKIP this conversation.
+            """
+        } else {
+            filterInstruction = """
+            IMPORTANT: The user has NOT set any filter criteria. You MUST always respond — do NOT skip.
+            Always write "respond" to the decision file.
+            """
+        }
+
         let fullPrompt = """
         You are monitoring a Slack channel/conversation called "\(channelName)".
         \(ownerContext)\(memoryFileRef)
@@ -31,15 +45,13 @@ enum ClaudeService {
 
         User instructions: \(prompt)
 
-        IMPORTANT: First, determine whether these messages are relevant based on the user instructions above.
-        The user instructions may contain filters (e.g., "only care about messages related to X" or "only if they mention Y").
-        If the messages do NOT match the user's filter criteria, you should SKIP this conversation.
+        \(filterInstruction)
 
         You MUST write exactly three files:
 
         1. Write your decision to: \(decisionPath)
            - Write ONLY the single word "respond" or "skip" (nothing else)
-           - Write "skip" if the messages are not relevant based on the user instructions
+           \(hasFilter ? "- Write \"skip\" if the messages are not relevant based on the user instructions" : "- You MUST write \"respond\" since no filter is configured")
            - Write "respond" if the messages are relevant and warrant a reply
 
         2. Write a brief summary of what was discussed to: \(summaryPath)
@@ -49,7 +61,7 @@ enum ClaudeService {
         3. Write your suggested reply to: \(draftPath)
            - Write the reply as if you are the owner speaking
            - Plain text only, this will be sent as a Slack message
-           - If you decided to skip, write a brief explanation of why you skipped (e.g., "Skipped: messages are about X, not related to the filter criteria")
+           \(hasFilter ? "- If you decided to skip, write a brief explanation of why you skipped (e.g., \"Skipped: messages are about X, not related to the filter criteria\")" : "- Always draft a reply")
 
         \(memoryManagementSection(memoryFilePath: memoryFilePath, memoryReportPath: memoryReportPath))
 

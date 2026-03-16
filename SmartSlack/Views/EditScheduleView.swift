@@ -7,6 +7,7 @@ struct EditScheduleView: View {
     @EnvironmentObject var logService: LogService
     @EnvironmentObject var promptStore: PromptStore
     @EnvironmentObject var appVM: AppViewModel
+    @EnvironmentObject var notificationService: NotificationService
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String
@@ -14,6 +15,7 @@ struct EditScheduleView: View {
     @State private var prompt: String
     @State private var notificationMode: NotificationMode
     @State private var skipNotificationMode: NotificationMode
+    @State private var previewDummySessionId: UUID?
 
     init(schedule: Schedule) {
         self.schedule = schedule
@@ -73,6 +75,13 @@ struct EditScheduleView: View {
                         Text(notificationModeDescription)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        Button {
+                            previewForcePopup()
+                        } label: {
+                            Label("Preview Force Popup", systemImage: "eye")
+                        }
+                        .buttonStyle(.smallSecondary)
                     }
                     .formCard()
 
@@ -119,6 +128,17 @@ struct EditScheduleView: View {
             .padding()
         }
         .frame(width: 500, height: 550)
+        .onChange(of: notificationService.forcePopupScheduleId) { _, newValue in
+            if newValue == nil && previewDummySessionId != nil {
+                cleanupPreviewSession()
+            }
+        }
+        .onDisappear {
+            if previewDummySessionId != nil {
+                notificationService.forcePopupScheduleId = nil
+                cleanupPreviewSession()
+            }
+        }
     }
 
     private var notificationModeDescription: String {
@@ -130,6 +150,40 @@ struct EditScheduleView: View {
         case .quiet:
             return "No notification. Check drafts manually from the sidebar."
         }
+    }
+
+    private func previewForcePopup() {
+        // Inject a dummy session so the popup has data to show
+        let dummySession = Session(
+            sessionId: UUID(),
+            timestamp: Date(),
+            messages: [
+                SlackMessage(type: "message", user: appVM.slackUserId ?? "U0000", text: "Hey team, can someone review the latest PR? It's been open for a while.", ts: String(Date().timeIntervalSince1970 - 300), threadTs: nil, replyCount: nil, files: nil),
+                SlackMessage(type: "message", user: "U99PREVIEW1", text: "Sure, I'll take a look this afternoon. Is it urgent?", ts: String(Date().timeIntervalSince1970 - 120), threadTs: nil, replyCount: nil, files: nil),
+                SlackMessage(type: "message", user: "U99PREVIEW2", text: "I just pushed some updates to the staging branch. Let me know if anything looks off.", ts: String(Date().timeIntervalSince1970 - 60), threadTs: nil, replyCount: nil, files: nil)
+            ],
+            summary: "The team is discussing a pending PR review. One member will review this afternoon. Recent updates have been pushed to staging.",
+            draftReply: "Thanks for picking that up! I'll check the staging updates now and leave comments on the PR if anything needs attention.",
+            draftHistory: [],
+            finalAction: .pending,
+            sentMessage: nil
+        )
+
+        previewDummySessionId = dummySession.sessionId
+
+        var updated = schedule
+        updated.sessions.append(dummySession)
+        scheduleStore.updateSchedule(updated)
+
+        notificationService.forcePopupScheduleId = schedule.id
+    }
+
+    private func cleanupPreviewSession() {
+        guard let dummyId = previewDummySessionId else { return }
+        var updated = schedule
+        updated.sessions.removeAll { $0.sessionId == dummyId }
+        scheduleStore.updateSchedule(updated)
+        previewDummySessionId = nil
     }
 
     private func save() {

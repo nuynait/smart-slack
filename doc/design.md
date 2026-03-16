@@ -63,7 +63,7 @@ SmartSlack/
 │   ├── SidebarView.swift            # Active/Completed/Failed tabs + list
 │   ├── ScheduleRowView.swift        # Row: status dot, name, countdown
 │   ├── ScheduleDetailView.swift     # Full detail: header (with filter/memory badges), session (with memory report), conversation; shows DraftView for pending/skipped
-│   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons; skipped view with Generate Draft
+│   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons; auto-send toggle + countdown; skipped view with Generate Draft
 │   ├── EditSendOverlay.swift        # Overlay dialog: edit draft text before sending
 │   ├── RewriteOverlay.swift         # Overlay dialog: rewrite draft via Claude with instructions
 │   ├── SendTargetOverlay.swift      # Overlay: choose send to channel or reply in thread
@@ -116,7 +116,9 @@ Schedule
 ├── initialMessageCount: Int   # Max messages to include on first fetch (default 5)
 ├── notificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet
 ├── skipNotificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet (default .quiet)
-└── memorySummary: String?     # One-line summary of what the prompt will memorize (e.g., "Key decisions and action items")
+├── filterSummary: String?     # One-line summary of the prompt's filter criteria (e.g., "Native development only")
+├── memorySummary: String?     # One-line summary of what the prompt will memorize (e.g., "Key decisions and action items")
+└── autoSend: Bool             # When true, drafts are auto-sent after 10-second countdown
 ```
 
 ### Session
@@ -605,6 +607,33 @@ User sees draft in ScheduleDetailView (DraftView buttons)
             → Disregards filter criteria, generates draft
             → Session transitions from .skipped to .pending with new draft
 ```
+
+### Auto-Send Flow
+
+When `schedule.autoSend == true`, DraftView replaces all action buttons with a 10-second countdown.
+
+```
+New session created with .pending finalAction + draftReply
+  │
+  ├─ autoSend OFF → show normal buttons (Send/Edit & Send/Rewrite/Ignore)
+  │
+  └─ autoSend ON → start 10-second countdown timer
+       │
+       ├─ Countdown reaches 0 → auto-send draft
+       │    ├─ Thread schedule → postMessage(threadTs: schedule.threadTs)
+       │    └─ Non-thread schedule → postMessage(threadTs: nil) [sends to channel]
+       │    → finalAction = .sent, sentMessage = draft
+       │
+       └─ User toggles autoSend OFF before countdown → cancel timer immediately
+            → Show normal action buttons
+```
+
+**Key behaviors:**
+- Toggle persists on the Schedule model (survives app restart)
+- Keyboard shortcuts `e`/`r`/`i` are suppressed when autoSend is active
+- ForcePopupView also shows countdown instead of action buttons when autoSend is on
+- Auto-send targets the channel directly (no SendTargetOverlay) for non-thread schedules
+- Only applies to `.pending` sessions with a non-nil draftReply; skipped sessions are unaffected
 
 ### Authentication Flow
 
