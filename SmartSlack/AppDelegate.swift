@@ -234,6 +234,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             .environmentObject(appVM)
             .environmentObject(appVM.scheduleStore)
             .environmentObject(appVM.notificationService)
+            .environmentObject(appVM.userColorStore)
 
         let controller = NSHostingController(rootView: popupView)
         let panel = NSPanel(contentViewController: controller)
