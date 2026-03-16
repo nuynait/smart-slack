@@ -6,6 +6,7 @@ A macOS menu bar app that monitors Slack channels, threads, and DMs on configura
 
 - **Schedule-based monitoring** - Set up recurring checks on any Slack channel, thread, DM, or group DM with intervals from 5 seconds to 24 hours
 - **AI-powered analysis** - Claude reads new messages and generates a summary + draft reply based on your custom prompt
+- **Smart filtering** - Add filter criteria to your prompt (e.g., "only care about native development") and Claude auto-skips irrelevant conversations, with configurable notification for skipped sessions
 - **Draft workflow** - Review drafts, rewrite with feedback, browse draft history, or ignore
 - **Owner awareness** - Recognizes your own messages, skips Claude when only you posted, and drafts in your voice
 - **Image support** - Downloads and previews image attachments from Slack messages
@@ -29,6 +30,11 @@ The main interface with sidebar schedule list, color-coded conversation view, AI
 Review Claude's draft, then Edit & Send (`e`), Rewrite (`r`), Active Reply (`a`), or Ignore (`i`) — all with keyboard shortcuts.
 
 ![Draft Workflow](screenshots/draft-workflow.png)
+
+### Smart Filtering (Skip)
+Claude auto-detects filter criteria in your prompt and skips irrelevant conversations. Skipped sessions show the reason and a "Generate Draft" button to override.
+
+![Smart Filtering](screenshots/skipped-with-filter-on-prompt.png)
 
 ### Send Target Picker
 Choose to send to the channel or reply in a specific message's thread.
