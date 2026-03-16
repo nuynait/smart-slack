@@ -8,6 +8,7 @@ enum SidebarTab: String, CaseIterable {
 
 struct SidebarView: View {
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @EnvironmentObject var keyboardNav: KeyboardNavigationState
     @Binding var selectedScheduleId: UUID?
     @State private var selectedTab: SidebarTab = .active
 
@@ -45,5 +46,55 @@ struct SidebarView: View {
             .listStyle(.sidebar)
         }
         .frame(minWidth: 280, idealWidth: 320)
+        .onChange(of: keyboardNav.tabCycleDirection) { _, direction in
+            guard let direction else { return }
+            let tabs = SidebarTab.allCases
+            guard let idx = tabs.firstIndex(of: selectedTab) else {
+                keyboardNav.tabCycleDirection = nil
+                return
+            }
+            switch direction {
+            case .left:
+                selectedTab = tabs[(idx - 1 + tabs.count) % tabs.count]
+            case .right:
+                selectedTab = tabs[(idx + 1) % tabs.count]
+            }
+            // Select first schedule in new tab if current selection isn't in it
+            let schedules = filteredSchedules
+            if let id = selectedScheduleId, !schedules.contains(where: { $0.id == id }) {
+                selectedScheduleId = schedules.first?.id
+            }
+            keyboardNav.tabCycleDirection = nil
+        }
+        .onChange(of: keyboardNav.sidebarMoveDirection) { _, direction in
+            guard let direction else { return }
+            let schedules = filteredSchedules
+            guard !schedules.isEmpty else {
+                keyboardNav.sidebarMoveDirection = nil
+                return
+            }
+            let currentIndex = selectedScheduleId.flatMap { id in
+                schedules.firstIndex(where: { $0.id == id })
+            }
+            switch direction {
+            case .down:
+                if let idx = currentIndex {
+                    if idx + 1 < schedules.count {
+                        selectedScheduleId = schedules[idx + 1].id
+                    }
+                } else {
+                    selectedScheduleId = schedules.first?.id
+                }
+            case .up:
+                if let idx = currentIndex {
+                    if idx > 0 {
+                        selectedScheduleId = schedules[idx - 1].id
+                    }
+                } else {
+                    selectedScheduleId = schedules.last?.id
+                }
+            }
+            keyboardNav.sidebarMoveDirection = nil
+        }
     }
 }

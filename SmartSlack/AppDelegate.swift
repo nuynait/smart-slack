@@ -6,9 +6,11 @@ import Combine
 class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var statusItem: NSStatusItem!
     let appVM = AppViewModel()
+    let keyboardNav = KeyboardNavigationState()
     private var cancellables = Set<AnyCancellable>()
     private var window: NSWindow?
     private var forcePopupPanel: NSPanel?
+    private var eventMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -38,6 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             .store(in: &cancellables)
 
         updateButton()
+        installKeyboardMonitor()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -54,6 +57,138 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
         } else {
             NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+    }
+
+    // MARK: - Keyboard Navigation
+
+    private func installKeyboardMonitor() {
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            return self.handleKeyEvent(event)
+        }
+    }
+
+    private func isTextFieldActive() -> Bool {
+        guard let responder = NSApp.keyWindow?.firstResponder else { return false }
+        return responder is NSTextView
+    }
+
+    private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+        // Let text fields handle their own input
+        if isTextFieldActive() { return event }
+
+        // Don't handle keys when force popup is active
+        if forcePopupPanel?.isKeyWindow == true { return event }
+
+        guard let chars = event.charactersIgnoringModifiers else { return event }
+
+        // Delete confirmation mode — y/n/Esc
+        if keyboardNav.confirmingDelete {
+            if chars == "y" {
+                keyboardNav.confirmDeleteAnswer = true
+                return nil
+            }
+            if chars == "n" || event.keyCode == 53 {
+                keyboardNav.confirmDeleteAnswer = false
+                return nil
+            }
+            return event
+        }
+
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        // Cmd+Shift+P — open prompt manager (standalone, no schedule context)
+        if chars == "p" && flags.contains(.command) && flags.contains(.shift) {
+            keyboardNav.showPromptManager = true
+            return nil
+        }
+
+        // Only handle bare keys from here (allow Shift for ?)
+        guard flags.subtracting(.shift).isEmpty else { return event }
+
+        // Prompt view mode (picker or manager)
+        if keyboardNav.isInPromptView {
+            switch chars {
+            case "j":
+                keyboardNav.promptMoveDirection = .down
+                return nil
+            case "k":
+                keyboardNav.promptMoveDirection = .up
+                return nil
+            case "h":
+                keyboardNav.promptTabCycleDirection = .left
+                return nil
+            case "l":
+                keyboardNav.promptTabCycleDirection = .right
+                return nil
+            case "e":
+                keyboardNav.promptAction = .edit
+                return nil
+            case "s":
+                keyboardNav.focusPromptSearch = true
+                return nil
+            case "?":
+                keyboardNav.showCheatsheet.toggle()
+                return nil
+            default:
+                // Enter key — only selects in picker mode
+                if event.keyCode == 36 && keyboardNav.showPromptPicker {
+                    keyboardNav.promptAction = .select
+                    return nil
+                }
+                // Escape key
+                if event.keyCode == 53 {
+                    if keyboardNav.showCheatsheet {
+                        keyboardNav.showCheatsheet = false
+                    } else {
+                        keyboardNav.promptAction = .dismiss
+                    }
+                    return nil
+                }
+                return event
+            }
+        }
+
+        // Global mode
+        switch chars {
+        case "?":
+            keyboardNav.showCheatsheet.toggle()
+            return nil
+        case "j":
+            keyboardNav.sidebarMoveDirection = .down
+            return nil
+        case "k":
+            keyboardNav.sidebarMoveDirection = .up
+            return nil
+        case "h":
+            keyboardNav.tabCycleDirection = .left
+            return nil
+        case "l":
+            keyboardNav.tabCycleDirection = .right
+            return nil
+        case "p":
+            keyboardNav.showPromptPicker = true
+            return nil
+        case "e":
+            keyboardNav.editSelectedSchedule = true
+            return nil
+        case "d":
+            keyboardNav.deleteSelectedSchedule = true
+            return nil
+        case "r":
+            keyboardNav.activeReply = true
+            return nil
+        case "c":
+            keyboardNav.createSchedule = true
+            return nil
+        default:
+            // Escape closes cheatsheet
+            if event.keyCode == 53 && keyboardNav.showCheatsheet {
+                keyboardNav.showCheatsheet = false
+                return nil
+            }
+            return event
         }
     }
 

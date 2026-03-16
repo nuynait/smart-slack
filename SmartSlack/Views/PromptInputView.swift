@@ -14,7 +14,10 @@ struct PromptInputView: View {
                 Button {
                     showPicker = true
                 } label: {
-                    Label("Use Saved", systemImage: "bookmark")
+                    HStack(spacing: 4) {
+                        Label("Use Saved", systemImage: "bookmark")
+                        KeyboardHintView(key: "p")
+                    }
                 }
                 .buttonStyle(.smallSecondary)
             }

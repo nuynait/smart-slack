@@ -2,9 +2,13 @@ import SwiftUI
 
 struct PromptManagerView: View {
     @EnvironmentObject var promptStore: PromptStore
+    @EnvironmentObject var keyboardNav: KeyboardNavigationState
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedTab = 0
     @State private var searchText = ""
     @State private var editingPromptId: UUID?
+    @State private var highlightedIndex: Int?
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,8 +23,10 @@ struct PromptManagerView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
 
-            TextField("Search prompts...", text: $searchText)
+            TextField("Search prompts... (s)", text: $searchText)
                 .textFieldStyle(.roundedBorder)
+                .focused($isSearchFocused)
+                .onSubmit { isSearchFocused = false }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
 
@@ -35,10 +41,11 @@ struct PromptManagerView: View {
                 Spacer()
             } else {
                 List {
-                    ForEach(prompts) { prompt in
+                    ForEach(Array(prompts.enumerated()), id: \.element.id) { index, prompt in
                         PromptRowView(
                             prompt: prompt,
                             isGeneratingTags: promptStore.generatingTagsFor.contains(prompt.id),
+                            isHighlighted: highlightedIndex == index,
                             onEdit: { editingPromptId = prompt.id },
                             onStar: {
                                 if prompt.isStarred {
@@ -59,6 +66,68 @@ struct PromptManagerView: View {
             if let prompt = promptStore.prompt(byId: promptId) {
                 PromptEditorView(prompt: prompt)
             }
+        }
+        .onAppear {
+            DispatchQueue.main.async { isSearchFocused = false }
+        }
+        .onDisappear {
+            keyboardNav.showPromptManager = false
+        }
+        .onChange(of: keyboardNav.promptTabCycleDirection) { _, direction in
+            guard let direction else { return }
+            selectedTab = selectedTab == 0 ? 1 : 0
+            highlightedIndex = nil
+            keyboardNav.promptTabCycleDirection = nil
+        }
+        .onChange(of: keyboardNav.promptMoveDirection) { _, direction in
+            guard let direction else { return }
+            let count = filteredPrompts.count
+            guard count > 0 else {
+                keyboardNav.promptMoveDirection = nil
+                return
+            }
+            switch direction {
+            case .down:
+                if let idx = highlightedIndex {
+                    highlightedIndex = min(idx + 1, count - 1)
+                } else {
+                    highlightedIndex = 0
+                }
+            case .up:
+                if let idx = highlightedIndex {
+                    highlightedIndex = max(idx - 1, 0)
+                } else {
+                    highlightedIndex = count - 1
+                }
+            }
+            keyboardNav.promptMoveDirection = nil
+        }
+        .onChange(of: keyboardNav.promptAction) { _, action in
+            guard let action else { return }
+            let prompts = filteredPrompts
+            switch action {
+            case .select:
+                break // Enter does nothing in manager mode
+            case .edit:
+                if let idx = highlightedIndex, idx < prompts.count {
+                    editingPromptId = prompts[idx].id
+                }
+            case .dismiss:
+                dismiss()
+            }
+            keyboardNav.promptAction = nil
+        }
+        .onChange(of: keyboardNav.focusPromptSearch) { _, focus in
+            if focus {
+                isSearchFocused = true
+                keyboardNav.focusPromptSearch = false
+            }
+        }
+        .onChange(of: selectedTab) { _, _ in
+            highlightedIndex = nil
+        }
+        .onChange(of: searchText) { _, _ in
+            highlightedIndex = nil
         }
     }
 
@@ -84,6 +153,7 @@ extension UUID: @retroactive Identifiable {
 struct PromptRowView: View {
     let prompt: SavedPrompt
     let isGeneratingTags: Bool
+    var isHighlighted: Bool = false
     let onEdit: () -> Void
     let onStar: () -> Void
     let onDelete: () -> Void
@@ -146,6 +216,11 @@ struct PromptRowView: View {
             }
         }
         .padding(.vertical, 4)
+        .padding(.horizontal, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHighlighted ? Color.accentColor.opacity(0.12) : Color.clear)
+        )
     }
 }
 
@@ -169,7 +244,7 @@ struct PromptTagsView: View {
     }
 
     private func tagColor(_ tag: PromptTag) -> Color {
-        let index = tag.colorIndex % UserColorStore.presetColors.count
+        let index = PromptStore.stableColorIndex(for: tag.name)
         return UserColorStore.presetColors[index]
     }
 }

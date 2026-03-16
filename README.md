@@ -12,6 +12,9 @@ A macOS menu bar app that monitors Slack channels, threads, and DMs on configura
 - **Two ways to create schedules** - Browse channels or paste a Slack message link to auto-detect the conversation type
 - **Persistent color coding** - Each person in conversations gets a unique color, click to customize
 - **Menu bar app** - Runs in the background with live badge counts for active and failed schedules
+- **Notifications** - Three modes per schedule: macOS notification, force popup (always-on-top, undismissable), or quiet
+- **Prompt management** - Save, star, search, and reuse prompts with Claude-powered auto-tagging
+- **Keyboard navigation** - Vim-style keys for navigating schedules, cycling tabs, and managing prompts (press `?` for cheatsheet)
 - **Full history** - Searchable, paginated history of all sessions with summaries, drafts, and actions taken
 - **Logging** - Detailed logs of every fetch, Claude call, and action for debugging
 
@@ -80,6 +83,20 @@ When new messages arrive, Claude generates a summary and draft reply:
 - **Rewrite** - Give Claude feedback and get a new draft
 - **Ignore** - Skip this session, wait for the next check
 
+### Keyboard Shortcuts
+
+Press `?` anywhere (outside a text field) to see the full cheatsheet.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up in schedule list |
+| `h` / `l` | Cycle tabs left / right (wraps around) |
+| `p` | Open prompt picker |
+| `?` | Toggle keyboard cheatsheet |
+| `Esc` | Dismiss overlay |
+
+In the prompt picker, the same `j`/`k`/`h`/`l` keys navigate prompts and tabs. Press `Enter` to select, `e` to edit, or `Esc` to close.
+
 ### Schedule Lifecycle
 
 - **Active** - Timer running, checking for new messages
@@ -98,13 +115,16 @@ SmartSlack/
 │   ├── Schedule.swift           # Schedule, Session, DraftEntry
 │   └── SlackModels.swift        # Slack API response types
 ├── Services/
-│   ├── SlackService.swift       # Slack REST API client (actor)
-│   ├── ClaudeService.swift      # Claude CLI subprocess
-│   ├── SchedulerEngine.swift    # Per-schedule timers + execution
-│   ├── ScheduleStore.swift      # JSON file persistence
-│   ├── LogService.swift         # Event logging
-│   ├── KeychainService.swift    # Secure token storage
-│   └── UserColorStore.swift     # User color assignments
+│   ├── SlackService.swift              # Slack REST API client (actor)
+│   ├── ClaudeService.swift             # Claude CLI subprocess
+│   ├── SchedulerEngine.swift           # Per-schedule timers + execution
+│   ├── ScheduleStore.swift             # JSON file persistence
+│   ├── LogService.swift                # Event logging
+│   ├── KeychainService.swift           # Secure token storage
+│   ├── UserColorStore.swift            # User color assignments
+│   ├── NotificationService.swift       # Notifications + force popup
+│   ├── PromptStore.swift               # Prompt history + saved prompts
+│   └── KeyboardNavigationState.swift   # Keyboard navigation state
 ├── ViewModels/
 │   └── AppViewModel.swift       # Root state manager
 ├── Views/                       # SwiftUI views
@@ -122,6 +142,7 @@ All data is stored locally:
 | Schedules | `~/Library/Application Support/SmartSlack/schedules/*.json` |
 | Logs | `~/Library/Application Support/SmartSlack/logs/*.log` |
 | User colors | `~/Library/Application Support/SmartSlack/user_colors.json` |
+| Prompts | `~/Library/Application Support/SmartSlack/prompts.json` |
 | Starred channels | `~/Library/Application Support/SmartSlack/starred_channels.json` |
 | Slack token | macOS Keychain |
 

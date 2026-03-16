@@ -14,6 +14,7 @@ struct SmartSlackApp: App {
                 .environmentObject(appDelegate.appVM.userColorStore)
                 .environmentObject(appDelegate.appVM.notificationService)
                 .environmentObject(appDelegate.appVM.promptStore)
+                .environmentObject(appDelegate.keyboardNav)
         }
         .defaultSize(width: 1000, height: 700)
     }

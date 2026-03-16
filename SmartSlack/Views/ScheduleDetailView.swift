@@ -7,11 +7,47 @@ struct ScheduleDetailView: View {
     @EnvironmentObject var schedulerEngine: SchedulerEngine
     @EnvironmentObject var userColorStore: UserColorStore
     @EnvironmentObject var promptStore: PromptStore
+    @EnvironmentObject var keyboardNav: KeyboardNavigationState
     @State private var showEditSheet = false
     @State private var showPromptPicker = false
+    @State private var showDeleteConfirm = false
+    @State private var showActiveReply = false
     @State private var colorPickerUserId: String?
 
     var body: some View {
+        contentView
+            .toolbar { toolbarContent }
+            .sheet(isPresented: $showEditSheet) {
+                EditScheduleView(schedule: schedule)
+            }
+            .sheet(isPresented: $showPromptPicker) {
+                PromptPickerView { selectedText in
+                    var updated = schedule
+                    updated.prompt = selectedText
+                    scheduleStore.updateSchedule(updated)
+                }
+                .environmentObject(promptStore)
+            }
+            .task(id: schedule.id) { resolveAllUserNames() }
+            .onChange(of: schedule.sessions.count) { _, _ in resolveAllUserNames() }
+            .onChange(of: schedule.pendingMessages.count) { _, _ in resolveAllUserNames() }
+            .modifier(KeyboardNavModifier(
+                schedule: schedule,
+                showEditSheet: $showEditSheet,
+                showDeleteConfirm: $showDeleteConfirm,
+                showActiveReply: $showActiveReply,
+                scheduleStore: scheduleStore,
+                schedulerEngine: schedulerEngine,
+                keyboardNav: keyboardNav
+            ))
+            .overlay {
+                if showActiveReply {
+                    ActiveReplyView(schedule: schedule, isPresented: $showActiveReply)
+                }
+            }
+    }
+
+    private var contentView: some View {
         Group {
             if let session = schedule.latestSession {
                 ScrollView {
@@ -39,66 +75,48 @@ struct ScheduleDetailView: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if schedule.status == .active {
-                    Button {
-                        schedulerEngine.triggerManually(schedule.id)
-                    } label: {
-                        Image(systemName: "play.fill")
-                    }
-                    .help("Trigger now")
+    }
 
-                    Button {
-                        var updated = schedule
-                        updated.status = .completed
-                        scheduleStore.updateSchedule(updated)
-                        schedulerEngine.stopSchedule(schedule.id)
-                    } label: {
-                        Image(systemName: "checkmark.circle")
-                    }
-                    .help("Mark as completed")
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            if schedule.status == .active {
+                Button {
+                    schedulerEngine.triggerManually(schedule.id)
+                } label: {
+                    Image(systemName: "play.fill")
                 }
-
-                if schedule.status == .failed || schedule.status == .completed {
-                    Button {
-                        var updated = schedule
-                        updated.status = .active
-                        scheduleStore.updateSchedule(updated)
-                        schedulerEngine.startSchedule(updated)
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .help("Re-activate schedule")
-                }
+                .help("Trigger now")
 
                 Button {
-                    showEditSheet = true
+                    var updated = schedule
+                    updated.status = .completed
+                    scheduleStore.updateSchedule(updated)
+                    schedulerEngine.stopSchedule(schedule.id)
                 } label: {
-                    Image(systemName: "pencil")
+                    Image(systemName: "checkmark.circle")
                 }
-                .help("Edit schedule")
+                .help("Mark as completed")
             }
-        }
-        .sheet(isPresented: $showEditSheet) {
-            EditScheduleView(schedule: schedule)
-        }
-        .sheet(isPresented: $showPromptPicker) {
-            PromptPickerView { selectedText in
-                var updated = schedule
-                updated.prompt = selectedText
-                scheduleStore.updateSchedule(updated)
+
+            if schedule.status == .failed || schedule.status == .completed {
+                Button {
+                    var updated = schedule
+                    updated.status = .active
+                    scheduleStore.updateSchedule(updated)
+                    schedulerEngine.startSchedule(updated)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Re-activate schedule")
             }
-            .environmentObject(promptStore)
-        }
-        .task(id: schedule.id) {
-            resolveAllUserNames()
-        }
-        .onChange(of: schedule.sessions.count) { _, _ in
-            resolveAllUserNames()
-        }
-        .onChange(of: schedule.pendingMessages.count) { _, _ in
-            resolveAllUserNames()
+
+            Button {
+                showEditSheet = true
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .help("Edit schedule")
         }
     }
 
@@ -163,8 +181,11 @@ struct ScheduleDetailView: View {
                     Button {
                         showPromptPicker = true
                     } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.caption)
+                        HStack(spacing: 2) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption)
+                            KeyboardHintView(key: "p")
+                        }
                     }
                     .buttonStyle(.plain)
                     .help("Change prompt")
@@ -279,6 +300,17 @@ struct ScheduleDetailView: View {
             } else {
                 completedActionView(session)
             }
+
+            // Active Reply
+            Button {
+                showActiveReply = true
+            } label: {
+                HStack(spacing: 4) {
+                    Label("Active Reply", systemImage: "arrow.uturn.left.circle")
+                    KeyboardHintView(key: "r")
+                }
+            }
+            .buttonStyle(.smallSecondary)
 
             // Draft History
             if !session.draftHistory.isEmpty {
@@ -463,5 +495,67 @@ struct ScheduleDetailView: View {
         let remaining = seconds % 60
         if remaining == 0 { return "\(minutes)m" }
         return "\(minutes)m \(remaining)s"
+    }
+}
+
+// MARK: - Keyboard Navigation Modifier
+
+private struct KeyboardNavModifier: ViewModifier {
+    let schedule: Schedule
+    @Binding var showEditSheet: Bool
+    @Binding var showDeleteConfirm: Bool
+    @Binding var showActiveReply: Bool
+    let scheduleStore: ScheduleStore
+    let schedulerEngine: SchedulerEngine
+    @ObservedObject var keyboardNav: KeyboardNavigationState
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: keyboardNav.editSelectedSchedule) { _, edit in
+                if edit {
+                    showEditSheet = true
+                    keyboardNav.editSelectedSchedule = false
+                }
+            }
+            .onChange(of: keyboardNav.activeReply) { _, reply in
+                if reply {
+                    showActiveReply = true
+                    keyboardNav.activeReply = false
+                }
+            }
+            .onChange(of: keyboardNav.deleteSelectedSchedule) { _, del in
+                if del {
+                    showDeleteConfirm = true
+                    keyboardNav.confirmingDelete = true
+                    keyboardNav.deleteSelectedSchedule = false
+                }
+            }
+            .onChange(of: keyboardNav.confirmDeleteAnswer) { _, answer in
+                guard let answer else { return }
+                if answer {
+                    schedulerEngine.stopSchedule(schedule.id)
+                    scheduleStore.deleteSchedule(schedule)
+                }
+                showDeleteConfirm = false
+                keyboardNav.confirmingDelete = false
+                keyboardNav.confirmDeleteAnswer = nil
+            }
+            .overlay {
+                if showDeleteConfirm {
+                    DeleteConfirmOverlay(
+                        name: schedule.name,
+                        onConfirm: {
+                            schedulerEngine.stopSchedule(schedule.id)
+                            scheduleStore.deleteSchedule(schedule)
+                            showDeleteConfirm = false
+                            keyboardNav.confirmingDelete = false
+                        },
+                        onCancel: {
+                            showDeleteConfirm = false
+                            keyboardNav.confirmingDelete = false
+                        }
+                    )
+                }
+            }
     }
 }

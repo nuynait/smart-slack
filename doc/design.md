@@ -49,7 +49,8 @@ SmartSlack/
 │   ├── KeychainService.swift        # Keychain token CRUD
 │   ├── UserColorStore.swift         # Persistent user color assignments
 │   ├── NotificationService.swift    # macOS notifications + force popup management
-│   └── PromptStore.swift            # Prompt history, saved prompts, tag generation
+│   ├── PromptStore.swift            # Prompt history, saved prompts, tag generation
+│   └── KeyboardNavigationState.swift # Centralized keyboard navigation state
 │
 ├── ViewModels/
 │   └── AppViewModel.swift           # Root state: auth, user cache, ownership
@@ -75,7 +76,8 @@ SmartSlack/
 │   ├── PromptManagerView.swift      # Manage prompt history and saved prompts
 │   ├── PromptEditorView.swift       # Edit a prompt with auto-tagging
 │   ├── PromptPickerView.swift       # Popup to select a saved/history prompt
-│   └── PromptInputView.swift        # Reusable prompt input with picker button
+│   ├── PromptInputView.swift        # Reusable prompt input with picker button
+│   └── KeyboardCheatsheetView.swift # Keyboard shortcut cheatsheet overlay
 │
 └── Utilities/
     ├── Constants.swift              # Paths, keychain IDs, Slack config
@@ -363,6 +365,7 @@ Injected environment objects:
 - NotificationService (notificationService)
 - PromptStore (promptStore)
 - UserColorStore (userColorStore)
+- KeyboardNavigationState (keyboardNav)
 ```
 
 ### Menu Bar (AppDelegate)
@@ -432,6 +435,36 @@ Opens in a separate `NSWindow`. Features:
 History, Log Viewer, and Settings open in separate `NSWindow` instances (created programmatically in MainView) rather than sheets or navigation destinations. Environment objects must be explicitly injected when creating these windows (they don't inherit from the main window hierarchy).
 
 The Force Popup uses an `NSPanel` with `level = .floating` managed by AppDelegate. It observes `notificationService.forcePopupScheduleId` via Combine and cannot be dismissed via the close button (`windowShouldClose` returns `false`). Only Send or Ignore actions dismiss it by setting `forcePopupScheduleId = nil`.
+
+### Keyboard Navigation
+
+Vim-style keyboard navigation is implemented via `NSEvent.addLocalMonitorForEvents(matching: .keyDown)` installed in AppDelegate. This intercepts all key-down events app-wide before they reach responders.
+
+**Architecture:**
+- `KeyboardNavigationState` (ObservableObject) acts as a command bus between the NSEvent handler and SwiftUI views
+- The handler checks `NSApp.keyWindow?.firstResponder is NSTextView` to skip when a text field/editor is active
+- Only bare keys are handled (no Cmd/Ctrl/Option modifiers, Shift allowed for `?`)
+- Force popup panel key events are passed through unhandled
+
+**Global shortcuts (when not in a text field):**
+| Key | Action |
+|-----|--------|
+| `?` | Toggle keyboard cheatsheet overlay |
+| `j` / `k` | Move down/up in schedule list |
+| `h` / `l` | Cycle sidebar tabs left/right (wraps around) |
+| `p` | Open prompt picker as sheet |
+| `Esc` | Dismiss cheatsheet |
+
+**Prompt picker shortcuts (when prompt picker is open):**
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down/up in prompt list |
+| `h` / `l` | Cycle tabs left/right (wraps around) |
+| `Enter` | Select highlighted prompt |
+| `e` | Edit highlighted prompt |
+| `Esc` | Dismiss prompt picker |
+
+Views respond to navigation signals via `.onChange` modifiers that observe the published properties on `KeyboardNavigationState`, perform the action, then nil out the property.
 
 ---
 

@@ -3,6 +3,7 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @EnvironmentObject var keyboardNav: KeyboardNavigationState
     @State private var selectedScheduleId: UUID?
     @State private var showAddFromLinkSheet = false
 
@@ -73,6 +74,40 @@ struct MainView: View {
             if let id = newId {
                 selectedScheduleId = id
                 appVM.notificationService.selectedScheduleIdFromNotification = nil
+            }
+        }
+        .onChange(of: keyboardNav.createSchedule) { _, create in
+            if create {
+                showAddFromLinkSheet = true
+                keyboardNav.createSchedule = false
+            }
+        }
+        .onChange(of: keyboardNav.showPromptPicker) { _, show in
+            // p key requires a selected schedule — ignore if none
+            if show && selectedScheduleId == nil {
+                keyboardNav.showPromptPicker = false
+            }
+        }
+        .sheet(isPresented: $keyboardNav.showPromptPicker) {
+            PromptPickerView { promptText in
+                if let id = selectedScheduleId,
+                   var schedule = scheduleStore.schedule(byId: id) {
+                    schedule.prompt = promptText
+                    scheduleStore.updateSchedule(schedule)
+                }
+            }
+            .environmentObject(appVM.promptStore)
+            .environmentObject(keyboardNav)
+        }
+        .sheet(isPresented: $keyboardNav.showPromptManager) {
+            PromptManagerView()
+                .environmentObject(appVM.promptStore)
+                .environmentObject(keyboardNav)
+        }
+        .overlay {
+            if keyboardNav.showCheatsheet {
+                KeyboardCheatsheetView()
+                    .environmentObject(keyboardNav)
             }
         }
     }

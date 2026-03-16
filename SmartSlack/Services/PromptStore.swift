@@ -143,7 +143,7 @@ final class PromptStore: ObservableObject {
                 PromptTag(
                     id: UUID(),
                     name: name,
-                    colorIndex: Int.random(in: 0..<UserColorStore.presetColors.count)
+                    colorIndex: Self.stableColorIndex(for: name)
                 )
             }
             updateTags(id: promptId, tags: tags)
@@ -151,6 +151,11 @@ final class PromptStore: ObservableObject {
             // Tag generation is best-effort; silently ignore errors
         }
         generatingTagsFor.remove(promptId)
+    }
+
+    static func stableColorIndex(for name: String) -> Int {
+        let hash = name.lowercased().utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
+        return abs(hash) % UserColorStore.presetColors.count
     }
 
     // MARK: - Persistence
