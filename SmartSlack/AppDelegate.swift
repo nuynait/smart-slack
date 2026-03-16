@@ -252,35 +252,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // SF Symbol
         if let image = NSImage(systemSymbolName: "bubble.left.and.text.bubble.right.fill", accessibilityDescription: "SmartSlack") {
-            let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+            let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
             let configured = image.withSymbolConfiguration(config) ?? image
             let attachment = NSTextAttachment()
             attachment.image = configured
             attributed.append(NSAttributedString(attachment: attachment))
         }
 
+        let countFont = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
+
         if activeCount > 0 {
-            let active = NSAttributedString(
-                string: " \(activeCount)",
-                attributes: [.foregroundColor: NSColor.systemGreen, .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)]
-            )
-            attributed.append(active)
+            attributed.append(NSAttributedString(
+                string: "\(activeCount)",
+                attributes: [.foregroundColor: NSColor.systemGreen, .font: countFont]
+            ))
         }
 
         if pendingCount > 0 {
-            let pending = NSAttributedString(
-                string: " \(pendingCount)",
-                attributes: [.foregroundColor: NSColor.systemOrange, .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)]
-            )
-            attributed.append(pending)
+            attributed.append(NSAttributedString(
+                string: "\(pendingCount)",
+                attributes: [.foregroundColor: NSColor.systemOrange, .font: countFont]
+            ))
         }
 
         if failedCount > 0 {
-            let failed = NSAttributedString(
-                string: " \(failedCount)",
-                attributes: [.foregroundColor: NSColor.systemRed, .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)]
-            )
-            attributed.append(failed)
+            attributed.append(NSAttributedString(
+                string: "\(failedCount)",
+                attributes: [.foregroundColor: NSColor.systemRed, .font: countFont]
+            ))
         }
 
         button.attributedTitle = attributed
