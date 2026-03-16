@@ -5,8 +5,8 @@ struct DraftView: View {
     let session: Session
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
-    @State private var rewritePrompt = ""
-    @State private var isRewriting = false
+    @Binding var showEditSend: Bool
+    @Binding var showRewrite: Bool
     @State private var isSending = false
     @State private var error: String?
 
@@ -41,34 +41,40 @@ struct DraftView: View {
                     }
                 }
                 .buttonStyle(.primary)
-                .disabled(session.draftReply == nil || isSending || isRewriting)
+                .disabled(session.draftReply == nil || isSending)
+
+                Button {
+                    showEditSend = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Label("Edit & Send", systemImage: "pencil")
+                        KeyboardHintView(key: "e")
+                    }
+                }
+                .buttonStyle(.secondary)
+                .disabled(session.draftReply == nil || isSending)
+
+                Button {
+                    showRewrite = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
+                        KeyboardHintView(key: "r")
+                    }
+                }
+                .buttonStyle(.secondary)
+                .disabled(session.draftReply == nil || isSending)
 
                 Button {
                     ignore()
                 } label: {
-                    Label("Ignore", systemImage: "xmark")
-                }
-                .buttonStyle(.secondary)
-                .disabled(isSending || isRewriting)
-            }
-
-            Divider()
-
-            HStack {
-                TextField("Rewrite instructions...", text: $rewritePrompt)
-                    .textFieldStyle(.roundedBorder)
-
-                Button {
-                    Task { await rewrite() }
-                } label: {
-                    if isRewriting {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
+                    HStack(spacing: 4) {
+                        Label("Ignore", systemImage: "xmark")
+                        KeyboardHintView(key: "i")
                     }
                 }
                 .buttonStyle(.secondary)
-                .disabled(rewritePrompt.isEmpty || isRewriting || isSending)
+                .disabled(isSending)
             }
         }
     }
@@ -107,58 +113,5 @@ struct DraftView: View {
             updated.sessions[updated.sessions.count - 1] = lastSession
         }
         scheduleStore.updateSchedule(updated)
-    }
-
-    private func rewrite() async {
-        isRewriting = true
-        error = nil
-
-        do {
-            let allSummaries = schedule.sessions.compactMap(\.summary)
-            var currentHistory = session.draftHistory
-            if let currentDraft = session.draftReply {
-                currentHistory.append(DraftEntry(
-                    id: UUID(),
-                    draft: currentDraft,
-                    timestamp: Date(),
-                    rewritePrompt: nil
-                ))
-            }
-
-            let result = try await ClaudeService.rewrite(
-                messages: session.messages,
-                allSummaries: allSummaries,
-                draftHistory: currentHistory,
-                originalPrompt: schedule.prompt,
-                rewritePrompt: rewritePrompt,
-                channelName: schedule.channelName,
-                scheduleId: schedule.id,
-                ownerUserId: appVM.slackUserId,
-                ownerDisplayName: appVM.slackUserDisplayName,
-                userNames: appVM.userNameCache
-            )
-
-            var updated = schedule
-            if var lastSession = updated.sessions.last {
-                // Move current draft to history
-                if let oldDraft = lastSession.draftReply {
-                    lastSession.draftHistory.append(DraftEntry(
-                        id: UUID(),
-                        draft: oldDraft,
-                        timestamp: Date(),
-                        rewritePrompt: rewritePrompt
-                    ))
-                }
-                lastSession.draftReply = result.draftReply
-                lastSession.summary = result.summary
-                updated.sessions[updated.sessions.count - 1] = lastSession
-            }
-            scheduleStore.updateSchedule(updated)
-            rewritePrompt = ""
-        } catch {
-            self.error = error.localizedDescription
-        }
-
-        isRewriting = false
     }
 }

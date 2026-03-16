@@ -62,7 +62,9 @@ SmartSlack/
 │   ├── SidebarView.swift            # Active/Completed/Failed tabs + list
 │   ├── ScheduleRowView.swift        # Row: status dot, name, countdown
 │   ├── ScheduleDetailView.swift     # Full detail: header, session, conversation
-│   ├── DraftView.swift              # Send/Rewrite/Ignore actions
+│   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons
+│   ├── EditSendOverlay.swift        # Overlay dialog: edit draft text before sending
+│   ├── RewriteOverlay.swift         # Overlay dialog: rewrite draft via Claude with instructions
 │   ├── DraftHistoryView.swift       # Previous drafts with send fallback
 │   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link
 │   ├── EditScheduleView.swift       # Edit schedule properties
@@ -510,20 +512,19 @@ countdown[id] -= 1
 ### Draft Action Flow
 
 ```
-User sees draft in ScheduleDetailView
+User sees draft in ScheduleDetailView (DraftView buttons)
   │
   ├─ Send → SlackService.postMessage() → set finalAction = .sent
   │
-  ├─ Ignore → set finalAction = .ignored
+  ├─ Edit & Send → opens EditSendOverlay (overlay dialog)
+  │    └─ User edits draft text → Send → SlackService.postMessage()
   │
-  └─ Rewrite → enter feedback text
-       │
-       ▼
-     Claude.rewrite(messages, history, feedback)
-       │
-       ▼
-     Move current draft to draftHistory
-     Set new draft from Claude response
+  ├─ Rewrite → opens RewriteOverlay (overlay dialog)
+  │    └─ User enters rewrite instructions → Claude.rewrite()
+  │         → Move current draft to draftHistory
+  │         → Set new draft from Claude response
+  │
+  └─ Ignore → set finalAction = .ignored
 ```
 
 ### Authentication Flow

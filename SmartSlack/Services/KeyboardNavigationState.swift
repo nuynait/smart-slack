@@ -21,6 +21,9 @@ final class KeyboardNavigationState: ObservableObject {
     @Published var deleteSelectedSchedule = false
     @Published var activeReply = false
     @Published var createSchedule = false
+    @Published var editAndSend = false
+    @Published var rewriteDraft = false
+    @Published var ignoreDraft = false
     @Published var confirmingDelete = false
     @Published var confirmDeleteAnswer: Bool?  // true = yes, false = no
 

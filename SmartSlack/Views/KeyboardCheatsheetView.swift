@@ -30,12 +30,20 @@ struct KeyboardCheatsheetView: View {
                 twoColumnSection("Actions") {
                     [
                         ("New schedule", ["c"]),
-                        ("Active reply", ["r"]),
-                        ("Edit schedule", ["e"]),
+                        ("Edit schedule", ["⌘", "E"]),
                         ("Delete schedule", ["d"]),
                         ("Change prompt", ["p"]),
-                        ("Manage prompts", ["⌘", "Shift", "P"]),
+                        ("Manage prompts", ["⌘", "⇧", "P"]),
                         ("Show shortcuts", ["?"]),
+                    ]
+                }
+
+                twoColumnSection("Draft") {
+                    [
+                        ("Edit & Send", ["e"]),
+                        ("Rewrite", ["r"]),
+                        ("Active reply", ["a"]),
+                        ("Ignore", ["i"]),
                     ]
                 }
 

@@ -12,6 +12,8 @@ struct ScheduleDetailView: View {
     @State private var showPromptPicker = false
     @State private var showDeleteConfirm = false
     @State private var showActiveReply = false
+    @State private var showEditSend = false
+    @State private var showRewrite = false
     @State private var colorPickerUserId: String?
 
     var body: some View {
@@ -36,6 +38,8 @@ struct ScheduleDetailView: View {
                 showEditSheet: $showEditSheet,
                 showDeleteConfirm: $showDeleteConfirm,
                 showActiveReply: $showActiveReply,
+                showEditSend: $showEditSend,
+                showRewrite: $showRewrite,
                 scheduleStore: scheduleStore,
                 schedulerEngine: schedulerEngine,
                 keyboardNav: keyboardNav
@@ -43,6 +47,12 @@ struct ScheduleDetailView: View {
             .overlay {
                 if showActiveReply {
                     ActiveReplyView(schedule: schedule, isPresented: $showActiveReply)
+                }
+                if showEditSend, let session = schedule.latestSession {
+                    EditSendOverlay(schedule: schedule, session: session, isPresented: $showEditSend)
+                }
+                if showRewrite, let session = schedule.latestSession {
+                    RewriteOverlay(schedule: schedule, session: session, isPresented: $showRewrite)
                 }
             }
     }
@@ -116,7 +126,7 @@ struct ScheduleDetailView: View {
             } label: {
                 Image(systemName: "pencil")
             }
-            .help("Edit schedule")
+            .help("Edit schedule (⌘E)")
         }
     }
 
@@ -296,7 +306,7 @@ struct ScheduleDetailView: View {
 
             // Draft
             if session.finalAction == .pending {
-                DraftView(schedule: schedule, session: session)
+                DraftView(schedule: schedule, session: session, showEditSend: $showEditSend, showRewrite: $showRewrite)
             } else {
                 completedActionView(session)
             }
@@ -307,10 +317,10 @@ struct ScheduleDetailView: View {
             } label: {
                 HStack(spacing: 4) {
                     Label("Active Reply", systemImage: "arrow.uturn.left.circle")
-                    KeyboardHintView(key: "r")
+                    KeyboardHintView(key: "a")
                 }
             }
-            .buttonStyle(.smallSecondary)
+            .buttonStyle(.secondary)
 
             // Draft History
             if !session.draftHistory.isEmpty {
@@ -505,6 +515,8 @@ private struct KeyboardNavModifier: ViewModifier {
     @Binding var showEditSheet: Bool
     @Binding var showDeleteConfirm: Bool
     @Binding var showActiveReply: Bool
+    @Binding var showEditSend: Bool
+    @Binding var showRewrite: Bool
     let scheduleStore: ScheduleStore
     let schedulerEngine: SchedulerEngine
     @ObservedObject var keyboardNav: KeyboardNavigationState
@@ -521,6 +533,30 @@ private struct KeyboardNavModifier: ViewModifier {
                 if reply {
                     showActiveReply = true
                     keyboardNav.activeReply = false
+                }
+            }
+            .onChange(of: keyboardNav.editAndSend) { _, val in
+                if val {
+                    showEditSend = true
+                    keyboardNav.editAndSend = false
+                }
+            }
+            .onChange(of: keyboardNav.rewriteDraft) { _, val in
+                if val {
+                    showRewrite = true
+                    keyboardNav.rewriteDraft = false
+                }
+            }
+            .onChange(of: keyboardNav.ignoreDraft) { _, val in
+                if val {
+                    // Ignore the current draft directly
+                    var updated = schedule
+                    if var lastSession = updated.sessions.last {
+                        lastSession.finalAction = .ignored
+                        updated.sessions[updated.sessions.count - 1] = lastSession
+                    }
+                    scheduleStore.updateSchedule(updated)
+                    keyboardNav.ignoreDraft = false
                 }
             }
             .onChange(of: keyboardNav.deleteSelectedSchedule) { _, del in

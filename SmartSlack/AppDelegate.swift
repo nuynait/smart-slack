@@ -104,6 +104,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return nil
         }
 
+        // Cmd+E — edit schedule
+        if chars == "e" && flags.contains(.command) {
+            keyboardNav.editSelectedSchedule = true
+            return nil
+        }
+
         // Only handle bare keys from here (allow Shift for ?)
         guard flags.subtracting(.shift).isEmpty else { return event }
 
@@ -171,13 +177,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             keyboardNav.showPromptPicker = true
             return nil
         case "e":
-            keyboardNav.editSelectedSchedule = true
+            keyboardNav.editAndSend = true
+            return nil
+        case "r":
+            keyboardNav.rewriteDraft = true
+            return nil
+        case "a":
+            keyboardNav.activeReply = true
+            return nil
+        case "i":
+            keyboardNav.ignoreDraft = true
             return nil
         case "d":
             keyboardNav.deleteSelectedSchedule = true
-            return nil
-        case "r":
-            keyboardNav.activeReply = true
             return nil
         case "c":
             keyboardNav.createSchedule = true
