@@ -4,6 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject var notificationService: NotificationService
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var promptStore: PromptStore
+    @EnvironmentObject var keyboardNav: KeyboardNavigationState
     @State private var showPromptManager = false
 
     var body: some View {
@@ -96,6 +97,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showPromptManager) {
             PromptManagerView()
                 .environmentObject(promptStore)
+                .environmentObject(keyboardNav)
         }
     }
 }

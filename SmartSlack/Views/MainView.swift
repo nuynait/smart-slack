@@ -137,6 +137,7 @@ struct MainView: View {
             .environmentObject(appVM)
             .environmentObject(appVM.notificationService)
             .environmentObject(appVM.promptStore)
+            .environmentObject(keyboardNav)
         let controller = NSHostingController(rootView: settingsView)
         let window = NSWindow(contentViewController: controller)
         window.title = "SmartSlack Settings"

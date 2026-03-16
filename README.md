@@ -20,7 +20,65 @@ A macOS menu bar app that monitors Slack channels, threads, and DMs on configura
 
 ## Screenshots
 
-*Menu bar with schedule counts, conversation view with color-coded users, draft workflow with send/rewrite/ignore*
+### Main View
+The main interface with sidebar schedule list, color-coded conversation view, AI-generated summary, and draft reply.
+
+![Main View](screenshots/main-view.png)
+
+### Draft Workflow
+Review Claude's draft, then Edit & Send (`e`), Rewrite (`r`), Active Reply (`a`), or Ignore (`i`) — all with keyboard shortcuts.
+
+![Draft Workflow](screenshots/draft-workflow.png)
+
+### Send Target Picker
+Choose to send to the channel or reply in a specific message's thread.
+
+![Send Target Picker](screenshots/send-target-picker.png)
+
+### Rewrite Overlay
+Give Claude feedback to regenerate the draft with full conversation context.
+
+![Rewrite Overlay](screenshots/rewrite-overlay.png)
+
+### Create Schedule from Link
+Paste a Slack message URL to auto-detect channel, thread, and conversation type.
+
+![Create Schedule](screenshots/create-schedule.png)
+
+### Prompt Manager
+Save, star, search, and reuse prompts with Claude-powered auto-tagging.
+
+![Prompt Manager](screenshots/prompt-manager.png)
+
+### Force Popup Notification
+Always-on-top, undismissable panel for urgent schedule notifications.
+
+![Force Popup](screenshots/force-popup-notification.png)
+
+### Image Preview
+Click conversation images for a full-size preview with `h`/`l` keyboard navigation.
+
+![Image Preview](screenshots/image-preview.png)
+
+### Session History
+Browse past sessions with summaries, drafts, and actions taken.
+
+![Session History](screenshots/session-history.png)
+
+### Keyboard Cheatsheet
+Press `?` anywhere to see all available shortcuts.
+
+![Keyboard Cheatsheet](screenshots/keyboard-shortcut.png)
+
+### Menu Bar
+Compact menu bar icon with live badge counts — green (active), orange (pending), red (failed).
+
+![Menu Bar](screenshots/menu-bar-icon.png)
+
+### Login
+Paste your Slack User OAuth Token to get started.
+
+![Login](screenshots/login-screen.png)
 
 ## Requirements
 
