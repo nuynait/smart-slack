@@ -171,6 +171,22 @@ private struct HistoryEntryRow: View {
                 }
             }
 
+            // Memory report
+            if let memoryReport = entry.session.memoryReport {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Memory Updated")
+                        .font(.caption.bold())
+                        .foregroundStyle(.purple)
+                    Text(memoryReport)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.purple.opacity(0.05))
+                        .cornerRadius(6)
+                }
+            }
+
             // Final draft / sent message
             if entry.session.finalAction == .sent, let sent = entry.session.sentMessage {
                 VStack(alignment: .leading, spacing: 2) {

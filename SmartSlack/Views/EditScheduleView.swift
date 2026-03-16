@@ -106,7 +106,6 @@ struct EditScheduleView: View {
                 Button("Delete") {
                     schedulerEngine.stopSchedule(schedule.id)
                     logService.deleteLogsForSchedule(schedule.id)
-                    ClaudeService.cleanupOutput(for: schedule.id)
                     scheduleStore.deleteSchedule(schedule)
                     dismiss()
                 }
@@ -142,6 +141,7 @@ struct EditScheduleView: View {
         updated.notificationMode = notificationMode
         updated.skipNotificationMode = skipNotificationMode
         updated.filterSummary = nil
+        updated.memorySummary = nil
         scheduleStore.updateSchedule(updated)
 
         // Save prompt to history if changed
@@ -150,9 +150,9 @@ struct EditScheduleView: View {
             Task { await promptStore.generateTags(for: savedPrompt.id) }
         }
 
-        // Always re-analyze filter on save
-        print("[SmartSlack] EditScheduleView.save() calling analyzePromptFilter, appVM: \(ObjectIdentifier(appVM))")
+        // Always re-analyze filter and memory on save
         appVM.analyzePromptFilter(scheduleId: updated.id, prompt: prompt)
+        appVM.analyzePromptMemory(scheduleId: updated.id, prompt: prompt)
 
         // Restart timer with new interval if active
         if updated.status == .active {

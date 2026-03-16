@@ -44,7 +44,8 @@ SmartSlack/
 │   ├── SlackService.swift           # Actor-based Slack REST client
 │   ├── ClaudeService.swift          # Claude CLI Process spawning
 │   ├── SchedulerEngine.swift        # Timer management + execution pipeline
-│   ├── ScheduleStore.swift          # JSON file persistence + FS watching
+│   ├── ScheduleStore.swift          # JSON file persistence + FS watching + migration
+│   ├── MemoryStore.swift            # Per-schedule memory.md persistence
 │   ├── LogService.swift             # Event logging to files
 │   ├── KeychainService.swift        # Keychain token CRUD
 │   ├── UserColorStore.swift         # Persistent user color assignments
@@ -61,7 +62,7 @@ SmartSlack/
 │   ├── MainView.swift               # NavigationSplitView + toolbar
 │   ├── SidebarView.swift            # Active/Completed/Failed tabs + list
 │   ├── ScheduleRowView.swift        # Row: status dot, name, countdown
-│   ├── ScheduleDetailView.swift     # Full detail: header, session, conversation; shows DraftView for pending/skipped
+│   ├── ScheduleDetailView.swift     # Full detail: header (with filter/memory badges), session (with memory report), conversation; shows DraftView for pending/skipped
 │   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons; skipped view with Generate Draft
 │   ├── EditSendOverlay.swift        # Overlay dialog: edit draft text before sending
 │   ├── RewriteOverlay.swift         # Overlay dialog: rewrite draft via Claude with instructions
@@ -71,7 +72,7 @@ SmartSlack/
 │   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link (supports pre-filled initialLink); includes "When Skipped" notification picker
 │   ├── EditScheduleView.swift       # Edit schedule properties; includes "When Skipped" notification picker
 │   ├── IntervalPickerView.swift     # Preset buttons + adaptive slider
-│   ├── HistoryView.swift            # Paginated session history window (excludes pending/skipped)
+│   ├── HistoryView.swift            # Paginated session history window (excludes pending/skipped); shows memory report alongside summary and draft
 │   ├── LogViewerView.swift          # Filterable log viewer window with auto-scroll
 │   ├── MarkdownView.swift           # Markdown renderer for Claude summaries
 │   ├── SlackImageView.swift         # Async Slack image downloader + preview
@@ -84,7 +85,7 @@ SmartSlack/
 │   └── KeyboardCheatsheetView.swift # Keyboard shortcut cheatsheet overlay
 │
 └── Utilities/
-    ├── Constants.swift              # Paths, keychain IDs, Slack config
+    ├── Constants.swift              # Paths (per-schedule dirs), keychain IDs, Slack config
     └── Extensions.swift             # Colors, formatters, button styles, formCard
 ```
 
@@ -114,7 +115,8 @@ Schedule
 ├── pendingMessages: [SlackMessage]  # Owner messages waiting for next Claude session
 ├── initialMessageCount: Int   # Max messages to include on first fetch (default 5)
 ├── notificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet
-└── skipNotificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet (default .quiet)
+├── skipNotificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet (default .quiet)
+└── memorySummary: String?     # One-line summary of what the prompt will memorize (e.g., "Key decisions and action items")
 ```
 
 ### Session
@@ -131,7 +133,8 @@ Session
 ├── draftHistory: [DraftEntry]  # Previous drafts from rewrites
 ├── finalAction: FinalAction    # .pending | .sent | .ignored | .skipped
 ├── sentMessage: String?        # The actual text that was sent
-└── skipReason: String?         # Why Claude decided to skip (when finalAction == .skipped)
+├── skipReason: String?         # Why Claude decided to skip (when finalAction == .skipped)
+└── memoryReport: String?       # Claude's report of memory changes for this session
 ```
 
 ### SlackMessage
@@ -188,6 +191,7 @@ Invokes Claude Code CLI as a subprocess.
 - `analyze(messages:, prompt:, channelName:, scheduleId:, ownerUserId:, ownerDisplayName:, imagePaths:, userNames:)` → `AnalysisResult`
 - `rewrite(messages:, allSummaries:, draftHistory:, originalPrompt:, rewritePrompt:, channelName:, scheduleId:, ownerUserId:, ownerDisplayName:, imagePaths:, userNames:)` → `AnalysisResult`
 - `unskipRewrite(messages:, allSummaries:, originalPrompt:, channelName:, scheduleId:, ownerUserId:, ownerDisplayName:, imagePaths:, userNames:)` → `AnalysisResult` — generates a draft for a previously skipped session, telling Claude to disregard filter criteria (no user rewrite prompt needed)
+- `analyzePromptMemory(prompt:)` → `String?` — analyzes whether a user prompt contains memory instructions (e.g., "remember key decisions", "track PRs"). Returns a one-line summary of what will be memorized, or nil if no memory instructions found. Called alongside `analyzePromptFilter` when prompts change.
 - `cleanupOutput(for:)` — deletes output directory for a schedule
 
 **AnalysisResult:**
@@ -197,23 +201,32 @@ AnalysisResult
 ├── draft: String?          # Draft reply text (or skip reason if skipped)
 ├── skipped: Bool           # Whether Claude decided to skip based on user filters
 ├── rawPrompt: String       # Full prompt sent to Claude
-└── rawResponse: String     # Raw stdout from Claude process
+├── rawResponse: String     # Raw stdout from Claude process
+└── memoryReport: String?   # Brief report of memory changes (read from claude_output/memory.md)
 ```
 
 **How it works (file-based output):**
-1. Builds a text prompt with message history, owner context, image references, and user instructions
-2. Creates output directory: `~/Library/Application Support/SmartSlack/claude_output/{scheduleId}/`
-3. Clears any previous `summary.md`, `draft.txt`, and `decision.txt` from the output directory
-4. Instructs Claude to write three files:
+1. Builds a text prompt with message history, owner context, image references, memory context, and user instructions
+2. Creates output directory: `~/Library/Application Support/SmartSlack/schedulers/{scheduleId}/claude_output/`
+3. Clears any previous `summary.md`, `draft.txt`, `decision.txt`, and `memory.md` from the output directory
+4. Instructs Claude to write three files (plus an optional fourth):
    - `summary.md` — markdown-formatted summary of the conversation
    - `draft.txt` — plain text draft reply for Slack (contains skip reason if skipped)
    - `decision.txt` — either "respond" or "skip", based on whether the conversation matches the user's instruction filters
-5. Spawns `claude --print --output-format text --allowedTools Write` as a `Process`
+   - `memory.md` (optional) — brief report of memory changes, only written if the prompt has memory instructions
+5. Spawns `claude --print --output-format text --allowedTools Write,Read` as a `Process`
 6. Writes prompt to stdin, closes stdin
 7. Waits for process to exit
-8. Reads `summary.md`, `draft.txt`, and `decision.txt` from the output directory
+8. Reads `summary.md`, `draft.txt`, `decision.txt`, and optionally `memory.md` from the output directory
 9. Sets `skipped` flag based on `decision.txt` content (true if "skip")
-10. Returns `AnalysisResult` with summary, draft, skipped flag, raw prompt, and raw stdout
+10. Returns `AnalysisResult` with summary, draft, skipped flag, memory report, raw prompt, and raw stdout
+
+**Memory management:** Memory is Claude-managed, not user-editable. All three methods (`analyze`, `rewrite`, `unskipRewrite`) derive the memory file path from `scheduleId` internally (no `memory:` parameter). Each prompt includes:
+- A `PERSISTENT MEMORY` reference pointing Claude to `schedulers/{uuid}/memory.md` (if the file exists) so it can read context from previous sessions
+- A `MEMORY MANAGEMENT` section instructing Claude to: (1) read the existing memory file if present, (2) create/update the memory file if the user's prompt asks for memorization, (3) write a brief report of changes to `claude_output/memory.md`
+- If the prompt does NOT contain memory instructions, Claude leaves both files untouched
+
+The user's prompt controls what gets memorized (e.g., "remember key decisions", "track PRs reviewed"). Claude decides what to persist based on those instructions.
 
 **Skip decision:** The `analyze` prompt instructs Claude to evaluate whether the conversation requires the owner's attention based on the user's prompt/filter criteria. Claude writes "respond" or "skip" to `decision.txt`. If skipped, `draft.txt` contains the reason for skipping. The `rewrite` method always writes "respond" to `decision.txt` (rewrites are never skipped). The `unskipRewrite` method explicitly tells Claude to disregard any filter criteria and generate a draft.
 
@@ -231,7 +244,7 @@ AnalysisResult
 - To write in first person as the owner
 - Not to repeat/contradict the owner's previous messages
 
-**Important:** Uses `--print` mode (stateless, no conversation history in Claude). The `--allowedTools Write` flag grants Claude the Write tool to create output files. Each call is independent.
+**Important:** Uses `--print` mode (stateless, no conversation history in Claude). The `--allowedTools Write,Read` flag grants Claude the Write tool to create output files and the Read tool to read memory files from previous sessions. Each call is independent.
 
 ### SchedulerEngine (ObservableObject, @MainActor)
 
@@ -273,13 +286,38 @@ Manages the execution lifecycle of all schedules.
 
 File-based persistence for schedules.
 
-**Storage:** `~/Library/Application Support/SmartSlack/schedules/{uuid}.json`
+**Storage:** `~/Library/Application Support/SmartSlack/schedulers/{uuid}/schedule.json`
 
-Each schedule is a separate JSON file. Uses `JSONEncoder.slackEncoder` (snake_case keys, ISO8601 dates, pretty printed).
+Each schedule lives in its own directory alongside its Claude output and memory file:
+```
+schedulers/{uuid}/
+├── schedule.json      # Schedule data
+├── memory.md          # Per-schedule persistent context (Claude-managed, optional)
+└── claude_output/     # Claude's output files (summary.md, draft.txt, decision.txt, memory.md)
+```
 
-**File watching:** Uses `DispatchSourceFileSystemObject` on the schedules directory + a 5-second polling timer as fallback. Reloads all schedules when changes detected.
+Uses `JSONEncoder.slackEncoder` (snake_case keys, ISO8601 dates, pretty printed).
+
+**Migration:** `migrateIfNeeded()` runs on init to move data from the old flat layout (`schedules/{uuid}.json` + `claude_output/{uuid}/`) to the new per-schedule directory structure. This happens automatically on first launch after the update.
+
+**Deletion:** `deleteSchedule` removes the entire scheduler directory (`schedulers/{uuid}/`), which includes the schedule JSON, memory file, and Claude output in one operation.
+
+**File watching:** Uses `DispatchSourceFileSystemObject` on the schedulers directory + a 5-second polling timer as fallback. Reloads all schedules when changes detected.
 
 **Custom decoding:** `Schedule.init(from:)` handles backward compatibility — `pendingMessages` defaults to empty array if missing from JSON.
+
+### MemoryStore (enum, static methods)
+
+Per-schedule persistent context stored as plain markdown files. Follows the same pattern as `ClaudeService` (enum with static methods, no instance state).
+
+**Storage:** `~/Library/Application Support/SmartSlack/schedulers/{uuid}/memory.md`
+
+**Methods:**
+- `read(for:)` → `String?` — reads memory.md for a schedule, returns nil if file doesn't exist
+- `write(_:for:)` — writes text to memory.md (plain text, no JSON encoding)
+- `delete(for:)` — removes memory.md for a schedule
+
+**Note:** MemoryStore exists for potential future use but is not actively called by any views. Memory files are read and written directly by Claude via the Read and Write tools during analysis. The memory file path is derived from `Constants.memoryFile(for:)` and passed to Claude in the prompt.
 
 ### LogService (ObservableObject)
 
@@ -411,6 +449,13 @@ Messages from all sessions + pendingMessages are deduplicated by `ts` and sorted
 - **Owner messages:** Gray background, `.primary` name color, "owner" label below name, slightly lighter text
 - **Other users:** Background tinted with their assigned color at 8% opacity, name in assigned color
 - **Image previews:** Inline below message text, max 240x180px, async loaded with caching
+
+**Memory indicators:**
+- **Header badge:** Purple "Memory: ..." badge in ScheduleDetailView header (similar to the orange filter badge), showing `schedule.memorySummary` — a one-line description of what the prompt will memorize
+- **Session memory report:** "Memory Updated" section displayed after the summary in each session (purple background), showing `session.memoryReport` — Claude's brief report of what was saved/updated
+- **History view:** Memory report shown alongside summary and draft in HistoryView
+
+Memory is Claude-managed: there is no user-editable TextEditor for memory. The user controls memorization through prompt instructions (e.g., "remember key decisions"), and `ClaudeService.analyzePromptMemory(prompt:)` detects these instructions to populate the purple badge. Called alongside `analyzePromptFilter` on prompt changes (in `AppViewModel`, `EditScheduleView`, `AddScheduleFromLinkView`, and `MainView` prompt picker).
 
 ### IntervalPickerView
 
@@ -596,19 +641,46 @@ All models use `JSONEncoder.slackEncoder` / `JSONDecoder.slackDecoder`:
 - `initialMessageCount` defaults to `5`
 - `notificationMode` defaults to `.macosNotification`
 - `skipNotificationMode` defaults to `.quiet`
+- `memorySummary` defaults to `nil` if missing from JSON
 
 `Session.init(from:)` also handles backward compatibility:
 - `skipReason` defaults to `nil` if missing from JSON
+- `memoryReport` defaults to `nil` if missing from JSON
 
 This ensures old JSON files load without errors.
 
+### Storage Layout
+
+```
+~/Library/Application Support/SmartSlack/
+├── schedulers/
+│   └── {uuid}/
+│       ├── schedule.json      # Schedule data (JSON)
+│       ├── memory.md          # Per-schedule persistent context (plain text)
+│       └── claude_output/     # Claude's output files
+│           ├── summary.md
+│           ├── draft.txt
+│           ├── decision.txt
+│           └── memory.md      # Memory change report (optional, only if prompt has memory instructions)
+├── logs/
+│   └── {scheduleId}.log       # Per-schedule log files (NDJSON)
+├── prompts.json               # Prompt history and saved prompts
+├── prompt_settings.json       # Prompt store settings
+└── user_colors.json           # User color assignments
+```
+
+**Legacy layout (auto-migrated):**
+- `schedules/{uuid}.json` → `schedulers/{uuid}/schedule.json`
+- `claude_output/{uuid}/` → `schedulers/{uuid}/claude_output/`
+- Migration runs automatically via `ScheduleStore.migrateIfNeeded()` on first launch
+
 ### File Watching
 
-`ScheduleStore` monitors the schedules directory using:
+`ScheduleStore` monitors the schedulers directory using:
 1. `DispatchSourceFileSystemObject` — kernel-level file system event notification
 2. 5-second polling timer — fallback for reliability
 
-Both trigger `loadSchedules()` which re-reads all JSON files from disk.
+Both trigger `loadSchedules()` which re-reads all schedule.json files from each scheduler subdirectory.
 
 ---
 
@@ -617,11 +689,11 @@ Both trigger `loadSchedules()` which re-reads all JSON files from disk.
 ### Claude CLI Integration
 
 - Path: `/opt/homebrew/bin/claude`
-- Arguments: `["--print", "--output-format", "text", "--allowedTools", "Write"]`
+- Arguments: `["--print", "--output-format", "text", "--allowedTools", "Write,Read"]`
 - Input: prompt written to stdin, then stdin closed
-- Output: Claude writes `summary.md`, `draft.txt`, and `decision.txt` to `~/Library/Application Support/SmartSlack/claude_output/{scheduleId}/`
+- Output: Claude writes `summary.md`, `draft.txt`, `decision.txt`, and optionally `memory.md` to `~/Library/Application Support/SmartSlack/schedulers/{scheduleId}/claude_output/`
 - Mode: stateless (`--print`), no conversation history saved
-- The `--allowedTools Write` flag grants Claude the Write tool to create output files
+- The `--allowedTools Write,Read` flag grants Claude the Write tool (to create output files) and the Read tool (to read the memory file from previous sessions)
 - The `--file` flag is NOT used (requires session token). Images are referenced in prompt text only.
 - User names are resolved before calling Claude — all `<@USERID>` mentions and message authors are replaced with display names
 
@@ -685,8 +757,8 @@ Link format: `https://{workspace}.slack.com/archives/{channelId}/p{tsWithoutDot}
 ### Modifying the Claude prompt
 
 1. Edit `ClaudeService.swift` — `analyze()` for monitoring, `rewrite()` for rewrites, `unskipRewrite()` for generating drafts on skipped sessions
-2. The prompt structure: system context → owner context → messages → image references → user instructions → file write instructions
-3. Claude is instructed to write `summary.md` (markdown), `draft.txt` (plain text), and `decision.txt` ("respond" or "skip") to the schedule's output directory
+2. The prompt structure: system context → owner context → persistent memory reference → messages → image references → user instructions → file write instructions → memory management instructions
+3. Claude is instructed to write `summary.md` (markdown), `draft.txt` (plain text), `decision.txt` ("respond" or "skip"), and optionally `memory.md` (memory change report) to the schedule's output directory
 4. Output paths are absolute paths passed in the prompt — Claude uses the Write tool to create them
 5. The `analyze` prompt includes skip logic: Claude evaluates user filter criteria and writes "skip" to `decision.txt` if the conversation doesn't need attention; `draft.txt` then contains the skip reason
 6. The `rewrite` prompt always writes "respond" to `decision.txt` (rewrites are never skipped)

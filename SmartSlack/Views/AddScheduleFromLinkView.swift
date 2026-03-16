@@ -358,6 +358,7 @@ struct AddScheduleFromLinkView: View {
         Task { await promptStore.generateTags(for: savedPrompt.id) }
 
         appVM.analyzePromptFilter(scheduleId: schedule.id, prompt: prompt)
+        appVM.analyzePromptMemory(scheduleId: schedule.id, prompt: prompt)
 
         dismiss()
     }

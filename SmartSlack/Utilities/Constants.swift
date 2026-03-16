@@ -8,17 +8,35 @@ enum Constants {
         return url
     }()
 
-    static let schedulesDir: URL = {
-        let url = appSupportDir.appendingPathComponent("schedules")
+    static let schedulersDir: URL = {
+        let url = appSupportDir.appendingPathComponent("schedulers")
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }()
 
-    static let claudeOutputDir: URL = {
-        let url = appSupportDir.appendingPathComponent("claude_output")
+    // Legacy paths for migration
+    static let legacySchedulesDir: URL = appSupportDir.appendingPathComponent("schedules")
+    static let legacyClaudeOutputDir: URL = appSupportDir.appendingPathComponent("claude_output")
+
+    static func schedulerDir(for scheduleId: UUID) -> URL {
+        let url = schedulersDir.appendingPathComponent(scheduleId.uuidString)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
-    }()
+    }
+
+    static func scheduleFile(for scheduleId: UUID) -> URL {
+        schedulerDir(for: scheduleId).appendingPathComponent("schedule.json")
+    }
+
+    static func claudeOutputDir(for scheduleId: UUID) -> URL {
+        let url = schedulerDir(for: scheduleId).appendingPathComponent("claude_output")
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    static func memoryFile(for scheduleId: UUID) -> URL {
+        schedulerDir(for: scheduleId).appendingPathComponent("memory.md")
+    }
 
     static let logsDir: URL = {
         let url = appSupportDir.appendingPathComponent("logs")

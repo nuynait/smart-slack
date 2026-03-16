@@ -12,6 +12,7 @@ final class AppViewModel: ObservableObject {
     @Published var slackUserDisplayName: String?
     @Published var userNameCache: [String: String] = [:]
     @Published var analyzingFilterScheduleIds: Set<UUID> = []
+    @Published var analyzingMemoryScheduleIds: Set<UUID> = []
 
     let scheduleStore = ScheduleStore()
     let logService = LogService()
@@ -116,17 +117,13 @@ final class AppViewModel: ObservableObject {
 
     func analyzePromptFilter(scheduleId: UUID, prompt: String) {
         analyzingFilterScheduleIds.insert(scheduleId)
-        print("[SmartSlack] analyzePromptFilter called for \(scheduleId), prompt: \(prompt.prefix(50))")
         logService.log(.info, scheduleId: scheduleId, message: "Analyzing prompt for filter criteria")
 
         Task {
-            print("[SmartSlack] Task started for filter analysis")
             var filter: String?
             do {
                 filter = try await ClaudeService.analyzePromptFilter(prompt: prompt)
-                print("[SmartSlack] Claude returned filter: \(String(describing: filter))")
             } catch {
-                print("[SmartSlack] Claude filter error: \(error)")
                 logService.log(.error, scheduleId: scheduleId, message: "Filter analysis failed: \(error.localizedDescription)")
             }
 
@@ -137,13 +134,40 @@ final class AppViewModel: ObservableObject {
             }
 
             guard var sched = scheduleStore.schedule(byId: scheduleId) else {
-                logService.log(.warning, scheduleId: scheduleId, message: "Schedule not found after filter analysis")
                 analyzingFilterScheduleIds.remove(scheduleId)
                 return
             }
             sched.filterSummary = filter
             scheduleStore.updateSchedule(sched)
             analyzingFilterScheduleIds.remove(scheduleId)
+        }
+    }
+
+    func analyzePromptMemory(scheduleId: UUID, prompt: String) {
+        analyzingMemoryScheduleIds.insert(scheduleId)
+        logService.log(.info, scheduleId: scheduleId, message: "Analyzing prompt for memory instructions")
+
+        Task {
+            var memorySummary: String?
+            do {
+                memorySummary = try await ClaudeService.analyzePromptMemory(prompt: prompt)
+            } catch {
+                logService.log(.error, scheduleId: scheduleId, message: "Memory analysis failed: \(error.localizedDescription)")
+            }
+
+            if let memorySummary {
+                logService.log(.info, scheduleId: scheduleId, message: "Memory detected: \(memorySummary)")
+            } else {
+                logService.log(.info, scheduleId: scheduleId, message: "No memory instructions in prompt")
+            }
+
+            guard var sched = scheduleStore.schedule(byId: scheduleId) else {
+                analyzingMemoryScheduleIds.remove(scheduleId)
+                return
+            }
+            sched.memorySummary = memorySummary
+            scheduleStore.updateSchedule(sched)
+            analyzingMemoryScheduleIds.remove(scheduleId)
         }
     }
 

@@ -218,7 +218,8 @@ final class SchedulerEngine: ObservableObject {
                 draftHistory: [],
                 finalAction: result.skipped ? .skipped : .pending,
                 sentMessage: nil,
-                skipReason: result.skipped ? result.draftReply : nil
+                skipReason: result.skipped ? result.draftReply : nil,
+                memoryReport: result.memoryReport
             )
 
             // Update schedule, clear pending messages

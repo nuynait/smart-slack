@@ -43,10 +43,11 @@ struct Session: Codable, Identifiable, Hashable {
     var finalAction: FinalAction
     var sentMessage: String?
     var skipReason: String?
+    var memoryReport: String?
 
     var id: UUID { sessionId }
 
-    init(sessionId: UUID, timestamp: Date, messages: [SlackMessage], summary: String?, draftReply: String?, draftHistory: [DraftEntry], finalAction: FinalAction, sentMessage: String?, skipReason: String? = nil) {
+    init(sessionId: UUID, timestamp: Date, messages: [SlackMessage], summary: String?, draftReply: String?, draftHistory: [DraftEntry], finalAction: FinalAction, sentMessage: String?, skipReason: String? = nil, memoryReport: String? = nil) {
         self.sessionId = sessionId
         self.timestamp = timestamp
         self.messages = messages
@@ -56,6 +57,7 @@ struct Session: Codable, Identifiable, Hashable {
         self.finalAction = finalAction
         self.sentMessage = sentMessage
         self.skipReason = skipReason
+        self.memoryReport = memoryReport
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +71,7 @@ struct Session: Codable, Identifiable, Hashable {
         finalAction = try container.decode(FinalAction.self, forKey: .finalAction)
         sentMessage = try container.decodeIfPresent(String.self, forKey: .sentMessage)
         skipReason = try container.decodeIfPresent(String.self, forKey: .skipReason)
+        memoryReport = try container.decodeIfPresent(String.self, forKey: .memoryReport)
     }
 }
 
@@ -91,6 +94,7 @@ struct Schedule: Codable, Identifiable, Hashable {
     var notificationMode: NotificationMode
     var skipNotificationMode: NotificationMode
     var filterSummary: String?
+    var memorySummary: String?
 
     /// Latest session that was processed by Claude (has a summary).
     var latestSession: Session? {
@@ -103,7 +107,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         return latest.finalAction == .pending
     }
 
-    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification, skipNotificationMode: NotificationMode = .quiet, filterSummary: String? = nil) {
+    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification, skipNotificationMode: NotificationMode = .quiet, filterSummary: String? = nil, memorySummary: String? = nil) {
         self.id = id
         self.name = name
         self.type = type
@@ -122,6 +126,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         self.notificationMode = notificationMode
         self.skipNotificationMode = skipNotificationMode
         self.filterSummary = filterSummary
+        self.memorySummary = memorySummary
     }
 
     init(from decoder: Decoder) throws {
@@ -144,5 +149,6 @@ struct Schedule: Codable, Identifiable, Hashable {
         notificationMode = try container.decodeIfPresent(NotificationMode.self, forKey: .notificationMode) ?? .macosNotification
         skipNotificationMode = try container.decodeIfPresent(NotificationMode.self, forKey: .skipNotificationMode) ?? .quiet
         filterSummary = try container.decodeIfPresent(String.self, forKey: .filterSummary)
+        memorySummary = try container.decodeIfPresent(String.self, forKey: .memorySummary)
     }
 }

@@ -94,8 +94,10 @@ struct MainView: View {
                    var schedule = scheduleStore.schedule(byId: id) {
                     schedule.prompt = promptText
                     schedule.filterSummary = nil
+                    schedule.memorySummary = nil
                     scheduleStore.updateSchedule(schedule)
                     appVM.analyzePromptFilter(scheduleId: id, prompt: promptText)
+                    appVM.analyzePromptMemory(scheduleId: id, prompt: promptText)
                 }
             }
             .environmentObject(appVM.promptStore)

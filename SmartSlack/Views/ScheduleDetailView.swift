@@ -33,8 +33,10 @@ struct ScheduleDetailView: View {
                     var updated = schedule
                     updated.prompt = selectedText
                     updated.filterSummary = nil
+                    updated.memorySummary = nil
                     scheduleStore.updateSchedule(updated)
                     appVM.analyzePromptFilter(scheduleId: schedule.id, prompt: selectedText)
+                    appVM.analyzePromptMemory(scheduleId: schedule.id, prompt: selectedText)
                 }
                 .environmentObject(promptStore)
             }
@@ -204,53 +206,76 @@ struct ScheduleDetailView: View {
             }
 
             if !schedule.prompt.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .top) {
-                        Text(schedule.prompt)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            showPromptPicker = true
-                        } label: {
-                            HStack(spacing: 2) {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                                    .font(.caption)
-                                KeyboardHintView(key: "p")
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .help("Change prompt")
-                    }
-
-                    if appVM.analyzingFilterScheduleIds.contains(schedule.id) {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small)
-                            Text("Analyzing prompt for filters...")
+                HStack(alignment: .top) {
+                    Text(schedule.prompt)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        showPromptPicker = true
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                            KeyboardHintView(key: "p")
                         }
-                        .padding(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.quaternary.opacity(0.5))
-                        .cornerRadius(4)
-                    } else if let filter = schedule.filterSummary {
-                        HStack(spacing: 4) {
-                            Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                                .foregroundStyle(.orange)
-                            Text("Filter: \(filter)")
-                                .font(.caption.bold())
-                                .foregroundStyle(.orange)
-                        }
-                        .padding(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.orange.opacity(0.08))
-                        .cornerRadius(4)
                     }
+                    .buttonStyle(.plain)
+                    .help("Change prompt")
                 }
                 .padding(8)
                 .background(.quaternary)
                 .cornerRadius(6)
+            }
+
+            if appVM.analyzingFilterScheduleIds.contains(schedule.id) {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Analyzing prompt for filters...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.5))
+                .cornerRadius(4)
+            } else if let filter = schedule.filterSummary {
+                HStack(spacing: 4) {
+                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Filter: \(filter)")
+                        .font(.caption.bold())
+                        .foregroundStyle(.orange)
+                }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.orange.opacity(0.08))
+                .cornerRadius(4)
+            }
+
+            if appVM.analyzingMemoryScheduleIds.contains(schedule.id) {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Analyzing prompt for memory...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.5))
+                .cornerRadius(4)
+            } else if let memorySummary = schedule.memorySummary {
+                HStack(spacing: 4) {
+                    Image(systemName: "brain")
+                        .foregroundStyle(.purple)
+                    Text("Memory: \(memorySummary)")
+                        .font(.caption.bold())
+                        .foregroundStyle(.purple)
+                }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.purple.opacity(0.08))
+                .cornerRadius(4)
             }
         }
     }
@@ -353,6 +378,15 @@ struct ScheduleDetailView: View {
                 MarkdownView(text: summary)
                     .padding(12)
                     .background(.quaternary)
+                    .cornerRadius(8)
+            }
+
+            // Memory Report
+            if let memoryReport = session.memoryReport {
+                sectionHeader("Memory Updated", icon: "brain")
+                MarkdownView(text: memoryReport)
+                    .padding(12)
+                    .background(.purple.opacity(0.05))
                     .cornerRadius(8)
             }
 
