@@ -68,8 +68,8 @@ SmartSlack/
 │   ├── SendTargetOverlay.swift      # Overlay: choose send to channel or reply in thread
 │   ├── ImagePreviewOverlay.swift    # Full-size image viewer with h/l navigation
 │   ├── DraftHistoryView.swift       # Previous drafts with send fallback
-│   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link (supports pre-filled initialLink)
-│   ├── EditScheduleView.swift       # Edit schedule properties
+│   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link (supports pre-filled initialLink); includes "When Skipped" notification picker
+│   ├── EditScheduleView.swift       # Edit schedule properties; includes "When Skipped" notification picker
 │   ├── IntervalPickerView.swift     # Preset buttons + adaptive slider
 │   ├── HistoryView.swift            # Paginated session history window (excludes pending/skipped)
 │   ├── LogViewerView.swift          # Filterable log viewer window with auto-scroll
@@ -113,7 +113,8 @@ Schedule
 ├── sessions: [Session]         # All Claude analysis sessions
 ├── pendingMessages: [SlackMessage]  # Owner messages waiting for next Claude session
 ├── initialMessageCount: Int   # Max messages to include on first fetch (default 5)
-└── notificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet
+├── notificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet
+└── skipNotificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet (default .quiet)
 ```
 
 ### Session
@@ -257,7 +258,7 @@ Manages the execution lifecycle of all schedules.
 8. Download images from messages to temp directory
 9. Call `ClaudeService.analyze()` with all messages + image paths
 10. Log the prompt sent and response received
-11. If `result.skipped`: create `Session` with `.skipped` finalAction, nil draftReply, and `skipReason` from draft text; skip notification
+11. If `result.skipped`: create `Session` with `.skipped` finalAction, nil draftReply, and `skipReason` from draft text; notify via `skipNotificationMode`
 12. Otherwise: create a `Session` with messages, summary, draft, `.pending` finalAction
 13. Update schedule: set `lastRun`, advance `lastMessageTs`, clear `pendingMessages`, append session
 14. On error: mark schedule as `.failed`, stop timer
@@ -337,7 +338,9 @@ Manages notification delivery based on each schedule's `notificationMode`.
 - `willPresent` returns `[.banner, .sound]` so notifications appear even when the app is frontmost
 - `didReceive` extracts `scheduleId` from notification `userInfo`, sets `selectedScheduleIdFromNotification`, and activates the app
 
-**Sidebar indicator:** `Schedule.hasUnresolvedDraft` checks if any session has `.pending` finalAction with a non-nil summary. This is displayed in `ScheduleRowView` regardless of notification mode. Skipped sessions do not trigger notifications or sidebar indicators.
+**Skipped session notifications:** `notifySkippedSession(schedule:session:)` uses `schedule.skipNotificationMode` (defaults to `.quiet`) instead of `schedule.notificationMode` to decide how to notify for skipped sessions. This allows users to configure skip notifications independently from regular draft notifications.
+
+**Sidebar indicator:** `Schedule.hasUnresolvedDraft` checks if any session has `.pending` finalAction with a non-nil summary. This is displayed in `ScheduleRowView` regardless of notification mode. Skipped sessions use the schedule's `skipNotificationMode` (defaults to quiet).
 
 **Menu bar badge:** AppDelegate shows an orange count of schedules with unresolved drafts alongside the existing green (active) and red (failed) counts.
 
@@ -526,7 +529,7 @@ countdown[id] -= 1
             │
             ├─ Success + decision "respond" → create Session (.pending), notify, clear pendingMessages, reset countdown
             │
-            ├─ Success + decision "skip" → create Session (.skipped, skipReason), skip notification, clear pendingMessages, reset countdown
+            ├─ Success + decision "skip" → create Session (.skipped, skipReason), notify via skipNotificationMode, clear pendingMessages, reset countdown
             │
             └─ Error → mark schedule as .failed, stop timer
 ```
@@ -592,6 +595,7 @@ All models use `JSONEncoder.slackEncoder` / `JSONDecoder.slackDecoder`:
 - `pendingMessages` defaults to `[]`
 - `initialMessageCount` defaults to `5`
 - `notificationMode` defaults to `.macosNotification`
+- `skipNotificationMode` defaults to `.quiet`
 
 `Session.init(from:)` also handles backward compatibility:
 - `skipReason` defaults to `nil` if missing from JSON
