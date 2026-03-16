@@ -35,6 +35,12 @@ struct ScheduleRowView: View {
 
             Spacer()
 
+            if schedule.autoSend {
+                Image(systemName: "bolt.fill")
+                    .foregroundStyle(.blue)
+                    .font(.caption2)
+            }
+
             if schedule.hasUnresolvedDraft {
                 Image(systemName: "envelope.badge.fill")
                     .foregroundStyle(Color.statusPending)

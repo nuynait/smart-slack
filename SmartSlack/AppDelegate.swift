@@ -233,6 +233,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let popupView = ForcePopupView(schedule: schedule, session: session)
             .environmentObject(appVM)
             .environmentObject(appVM.scheduleStore)
+            .environmentObject(appVM.schedulerEngine)
             .environmentObject(appVM.notificationService)
             .environmentObject(appVM.userColorStore)
 

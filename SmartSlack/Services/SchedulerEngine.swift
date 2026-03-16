@@ -1,12 +1,26 @@
 import Foundation
 import Combine
 
+enum BackgroundTaskType: String {
+    case rewrite = "Rewriting draft..."
+    case activeReply = "Generating reply..."
+}
+
+struct BackgroundTaskInfo: Identifiable {
+    let id = UUID()
+    let scheduleId: UUID
+    let type: BackgroundTaskType
+}
+
 @MainActor
 final class SchedulerEngine: ObservableObject {
     @Published var countdowns: [UUID: TimeInterval] = [:]
     @Published var runningSchedules: Set<UUID> = []
+    @Published var autoSendCountdowns: [UUID: Int] = [:]
+    @Published var backgroundTasks: [UUID: BackgroundTaskInfo] = [:]
 
     private var timers: [UUID: Timer] = [:]
+    private var autoSendTimers: [UUID: Timer] = [:]
     private let scheduleStore: ScheduleStore
     private let logService: LogService
     private var slackService: SlackService?
@@ -83,6 +97,65 @@ final class SchedulerEngine: ObservableObject {
     func stopAll() {
         for id in timers.keys {
             stopSchedule(id)
+        }
+    }
+
+    // MARK: - Auto-send
+
+    func startAutoSend(for scheduleId: UUID) {
+        cancelAutoSend(for: scheduleId)
+        autoSendCountdowns[scheduleId] = 10
+        autoSendTimers[scheduleId] = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                guard var remaining = self.autoSendCountdowns[scheduleId] else { return }
+                remaining -= 1
+                if remaining <= 0 {
+                    self.cancelAutoSend(for: scheduleId)
+                    await self.performAutoSend(for: scheduleId)
+                } else {
+                    self.autoSendCountdowns[scheduleId] = remaining
+                }
+            }
+        }
+    }
+
+    func cancelAutoSend(for scheduleId: UUID) {
+        autoSendTimers[scheduleId]?.invalidate()
+        autoSendTimers.removeValue(forKey: scheduleId)
+        autoSendCountdowns.removeValue(forKey: scheduleId)
+    }
+
+    func manualSendAutoSchedule(for scheduleId: UUID) async {
+        cancelAutoSend(for: scheduleId)
+        await performAutoSend(for: scheduleId)
+    }
+
+    private func performAutoSend(for scheduleId: UUID) async {
+        guard let slackService,
+              let schedule = scheduleStore.schedule(byId: scheduleId),
+              let session = schedule.latestSession,
+              session.finalAction == .pending,
+              let draft = session.draftReply else { return }
+
+        do {
+            let threadTs = schedule.type == .thread ? schedule.threadTs : nil
+            _ = try await slackService.postMessage(
+                channelId: schedule.channelId,
+                text: draft,
+                threadTs: threadTs
+            )
+
+            var updated = schedule
+            if var lastSession = updated.sessions.last {
+                lastSession.finalAction = .sent
+                lastSession.sentMessage = draft
+                updated.sessions[updated.sessions.count - 1] = lastSession
+            }
+            scheduleStore.updateSchedule(updated)
+            notificationService?.forcePopupScheduleId = nil
+        } catch {
+            logService.log(.error, scheduleId: scheduleId, message: "Auto-send failed: \(error.localizedDescription)")
         }
     }
 
@@ -164,16 +237,31 @@ final class SchedulerEngine: ObservableObject {
                 return
             }
 
-            // Skip Claude if all new messages are from the owner, but store them
+            // Skip Claude if all new messages are from the owner
             if let ownerId = ownerUserId {
                 let allFromOwner = newMessages.allSatisfy { $0.user == ownerId }
                 if allFromOwner {
-                    logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "All \(newMessages.count) new messages are from owner, storing without Claude")
+                    logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "All \(newMessages.count) new messages are from owner, skipping Claude")
                     runningSchedules.remove(schedule.id)
+
+                    let allMessages = schedule.pendingMessages + newMessages
+                    let ownerSession = Session(
+                        sessionId: sessionId,
+                        timestamp: Date(),
+                        messages: allMessages,
+                        summary: "All \(newMessages.count) new message\(newMessages.count == 1 ? "" : "s") from you. No response needed.",
+                        draftReply: nil,
+                        draftHistory: [],
+                        finalAction: .skipped,
+                        sentMessage: nil,
+                        skipReason: "All new messages are from you — skipped without calling Claude."
+                    )
+
                     var updated = scheduleStore.schedule(byId: schedule.id) ?? schedule
                     updated.lastRun = Date()
                     updated.lastMessageTs = newMessages.compactMap(\.ts).max() ?? schedule.lastMessageTs
-                    updated.pendingMessages.append(contentsOf: newMessages)
+                    updated.pendingMessages = []
+                    updated.sessions.append(ownerSession)
                     scheduleStore.updateSchedule(updated)
                     return
                 }
@@ -231,6 +319,11 @@ final class SchedulerEngine: ObservableObject {
             updated.pendingMessages = []
             updated.sessions.append(session)
             scheduleStore.updateSchedule(updated)
+
+            // Start auto-send countdown if enabled and not skipped
+            if !result.skipped && updated.autoSend {
+                startAutoSend(for: schedule.id)
+            }
 
             // Notify based on skip status
             if !result.skipped {
@@ -313,5 +406,132 @@ final class SchedulerEngine: ObservableObject {
             }
         }
         return paths
+    }
+
+    // MARK: - Background Tasks
+
+    func runRewriteInBackground(
+        schedule: Schedule,
+        session: Session,
+        rewritePrompt: String,
+        userNames: [String: String]
+    ) {
+        let info = BackgroundTaskInfo(scheduleId: schedule.id, type: .rewrite)
+        backgroundTasks[schedule.id] = info
+
+        Task {
+            do {
+                let allMessages = Self.gatherMessages(from: schedule)
+                let allSummaries = schedule.sessions.compactMap(\.summary)
+
+                let result = try await ClaudeService.rewrite(
+                    messages: allMessages,
+                    allSummaries: allSummaries,
+                    draftHistory: session.draftHistory,
+                    originalPrompt: schedule.prompt,
+                    rewritePrompt: rewritePrompt,
+                    channelName: schedule.channelName,
+                    scheduleId: schedule.id,
+                    ownerUserId: ownerUserId,
+                    ownerDisplayName: ownerDisplayName,
+                    userNames: userNames
+                )
+
+                var updated = scheduleStore.schedule(byId: schedule.id) ?? schedule
+                if var lastSession = updated.sessions.last {
+                    let historyEntry = DraftEntry(
+                        id: UUID(),
+                        draft: session.draftReply ?? "",
+                        timestamp: Date(),
+                        rewritePrompt: rewritePrompt
+                    )
+                    lastSession.draftHistory.append(historyEntry)
+                    lastSession.summary = result.summary
+                    lastSession.draftReply = result.draftReply
+                    updated.sessions[updated.sessions.count - 1] = lastSession
+                }
+                scheduleStore.updateSchedule(updated)
+                notifyBackgroundComplete(schedule: updated)
+            } catch {
+                logService.log(.error, scheduleId: schedule.id, message: "Background rewrite failed: \(error.localizedDescription)")
+            }
+            backgroundTasks.removeValue(forKey: schedule.id)
+        }
+    }
+
+    func runActiveReplyInBackground(
+        schedule: Schedule,
+        prompt: String,
+        userNames: [String: String]
+    ) {
+        let info = BackgroundTaskInfo(scheduleId: schedule.id, type: .activeReply)
+        backgroundTasks[schedule.id] = info
+
+        Task {
+            do {
+                let allMessages = Self.gatherMessages(from: schedule)
+
+                let result = try await ClaudeService.analyze(
+                    messages: allMessages,
+                    prompt: prompt,
+                    channelName: schedule.channelName,
+                    scheduleId: schedule.id,
+                    ownerUserId: ownerUserId,
+                    ownerDisplayName: ownerDisplayName,
+                    userNames: userNames
+                )
+
+                let session = Session(
+                    sessionId: UUID(),
+                    timestamp: Date(),
+                    messages: allMessages,
+                    summary: result.summary,
+                    draftReply: result.draftReply,
+                    draftHistory: [],
+                    finalAction: .pending,
+                    sentMessage: nil
+                )
+
+                var updated = scheduleStore.schedule(byId: schedule.id) ?? schedule
+                updated.lastRun = Date()
+                updated.sessions.append(session)
+                scheduleStore.updateSchedule(updated)
+                notifyBackgroundComplete(schedule: updated)
+
+                if updated.autoSend {
+                    startAutoSend(for: schedule.id)
+                }
+            } catch {
+                logService.log(.error, scheduleId: schedule.id, message: "Background active reply failed: \(error.localizedDescription)")
+            }
+            backgroundTasks.removeValue(forKey: schedule.id)
+        }
+    }
+
+    private func notifyBackgroundComplete(schedule: Schedule) {
+        guard let session = schedule.latestSession else { return }
+        notificationService?.notifySessionReady(schedule: schedule, session: session)
+    }
+
+    private static func gatherMessages(from schedule: Schedule) -> [SlackMessage] {
+        var seen = Set<String>()
+        var all: [SlackMessage] = []
+        for session in schedule.sessions {
+            for msg in session.messages {
+                let key = msg.ts ?? UUID().uuidString
+                if !seen.contains(key) {
+                    seen.insert(key)
+                    all.append(msg)
+                }
+            }
+        }
+        for msg in schedule.pendingMessages {
+            let key = msg.ts ?? UUID().uuidString
+            if !seen.contains(key) {
+                seen.insert(key)
+                all.append(msg)
+            }
+        }
+        return all.sorted { ($0.ts ?? "") < ($1.ts ?? "") }
     }
 }

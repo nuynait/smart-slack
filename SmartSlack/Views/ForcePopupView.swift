@@ -5,6 +5,7 @@ struct ForcePopupView: View {
     let session: Session
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @EnvironmentObject var schedulerEngine: SchedulerEngine
     @EnvironmentObject var notificationService: NotificationService
     @EnvironmentObject var userColorStore: UserColorStore
     @State private var isSending = false
@@ -17,9 +18,9 @@ struct ForcePopupView: View {
     @State private var showImagePreview = false
     @State private var imagePreviewIndex = 0
 
-    // Auto-send countdown
-    @State private var autoSendCountdown: Int = 10
-    @State private var autoSendTimer: Timer?
+    private var autoSendCountdown: Int {
+        schedulerEngine.autoSendCountdowns[schedule.id] ?? 10
+    }
 
     private var currentSession: Session? {
         scheduleStore.schedule(byId: schedule.id)?.latestSession
@@ -163,22 +164,20 @@ struct ForcePopupView: View {
         .onChange(of: isAutoSend) { _, autoSend in
             let activeSession = currentSession ?? session
             if autoSend && activeSession.finalAction == .pending && activeSession.draftReply != nil {
-                startAutoSendCountdown()
+                schedulerEngine.startAutoSend(for: schedule.id)
             } else {
-                cancelAutoSendCountdown()
+                schedulerEngine.cancelAutoSend(for: schedule.id)
             }
         }
         .onAppear {
-            if isAutoSend {
+            // Only start if no countdown already running (engine may have started one)
+            if isAutoSend && schedulerEngine.autoSendCountdowns[schedule.id] == nil {
                 let activeSession = currentSession ?? session
                 if activeSession.finalAction == .pending && activeSession.draftReply != nil {
-                    startAutoSendCountdown()
+                    schedulerEngine.startAutoSend(for: schedule.id)
                 }
             }
             resolveUserNames()
-        }
-        .onDisappear {
-            cancelAutoSendCountdown()
         }
         // Enter key sends draft (when not in text field)
         .onKeyPress(.return) {
@@ -602,28 +601,6 @@ struct ForcePopupView: View {
         appVM.resolveUserNames(ids: allUserIds)
     }
 
-    // MARK: - Auto-send Timer
-
-    private func startAutoSendCountdown() {
-        cancelAutoSendCountdown()
-        autoSendCountdown = 10
-        autoSendTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            Task { @MainActor in
-                autoSendCountdown -= 1
-                if autoSendCountdown <= 0 {
-                    cancelAutoSendCountdown()
-                    await sendAndDismiss()
-                }
-            }
-        }
-    }
-
-    private func cancelAutoSendCountdown() {
-        autoSendTimer?.invalidate()
-        autoSendTimer = nil
-        autoSendCountdown = 10
-    }
-
     // MARK: - Actions
 
     private func sendAndDismiss() async {
@@ -649,7 +626,7 @@ struct ForcePopupView: View {
                 updated.sessions[updated.sessions.count - 1] = lastSession
             }
             scheduleStore.updateSchedule(updated)
-            cancelAutoSendCountdown()
+            schedulerEngine.cancelAutoSend(for: schedule.id)
             notificationService.forcePopupScheduleId = nil
         } catch {
             self.error = error.localizedDescription
@@ -666,7 +643,7 @@ struct ForcePopupView: View {
             updated.sessions[updated.sessions.count - 1] = lastSession
         }
         scheduleStore.updateSchedule(updated)
-        cancelAutoSendCountdown()
+        schedulerEngine.cancelAutoSend(for: schedule.id)
         notificationService.forcePopupScheduleId = nil
     }
 }

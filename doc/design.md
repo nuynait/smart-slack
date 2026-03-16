@@ -63,7 +63,7 @@ SmartSlack/
 │   ├── SidebarView.swift            # Active/Completed/Failed tabs + list
 │   ├── ScheduleRowView.swift        # Row: status dot, name, countdown
 │   ├── ScheduleDetailView.swift     # Full detail: header (with filter/memory badges), session (with memory report), conversation; shows DraftView for pending/skipped
-│   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons; auto-send toggle + countdown; skipped view with Generate Draft
+│   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons; auto-send countdown (observes SchedulerEngine); skipped view with Generate Draft
 │   ├── EditSendOverlay.swift        # Overlay dialog: edit draft text before sending
 │   ├── RewriteOverlay.swift         # Overlay dialog: rewrite draft via Claude with instructions
 │   ├── SendTargetOverlay.swift      # Overlay: choose send to channel or reply in thread
@@ -255,6 +255,8 @@ Manages the execution lifecycle of all schedules.
 **Published state:**
 - `countdowns: [UUID: TimeInterval]` — seconds until next execution per schedule
 - `runningSchedules: Set<UUID>` — currently executing schedules
+- `autoSendCountdowns: [UUID: Int]` — seconds until auto-send per schedule (observed by DraftView + ForcePopupView)
+- `backgroundTasks: [UUID: BackgroundTaskInfo]` — schedules with Claude processing in background (rewrite or active reply)
 
 **Timer system:**
 - Each active schedule gets a 1-second repeating `Timer`
@@ -610,30 +612,49 @@ User sees draft in ScheduleDetailView (DraftView buttons)
 
 ### Auto-Send Flow
 
-When `schedule.autoSend == true`, DraftView replaces all action buttons with a 10-second countdown.
+When `schedule.autoSend == true`, DraftView and ForcePopupView replace action buttons with a 10-second countdown.
+
+**Timer is centralized in `SchedulerEngine`** to prevent duplicate sends when both DraftView and ForcePopupView are visible simultaneously. Both views observe `schedulerEngine.autoSendCountdowns[schedule.id]` (a `@Published` dictionary) instead of managing their own timers.
 
 ```
 New session created with .pending finalAction + draftReply
   │
   ├─ autoSend OFF → show normal buttons (Send/Edit & Send/Rewrite/Ignore)
   │
-  └─ autoSend ON → start 10-second countdown timer
+  └─ autoSend ON → SchedulerEngine.startAutoSend(for: scheduleId)
+       │                 └─ sets autoSendCountdowns[id] = 10, starts single Timer
        │
-       ├─ Countdown reaches 0 → auto-send draft
+       ├─ Countdown reaches 0 → SchedulerEngine.performAutoSend(for:)
        │    ├─ Thread schedule → postMessage(threadTs: schedule.threadTs)
        │    └─ Non-thread schedule → postMessage(threadTs: nil) [sends to channel]
        │    → finalAction = .sent, sentMessage = draft
+       │    → Dismisses force popup if visible (notificationService.forcePopupScheduleId = nil)
        │
-       └─ User toggles autoSend OFF before countdown → cancel timer immediately
-            → Show normal action buttons
+       ├─ User toggles autoSend OFF → SchedulerEngine.cancelAutoSend(for:)
+       │    → Cancel timer, remove countdown entry, show normal action buttons
+       │
+       └─ User clicks "Send Now" in popup → SchedulerEngine.cancelAutoSend + manual send
 ```
 
 **Key behaviors:**
 - Toggle persists on the Schedule model (survives app restart)
 - Keyboard shortcuts `e`/`r`/`i` are suppressed when autoSend is active
-- ForcePopupView also shows countdown instead of action buttons when autoSend is on
+- Both DraftView and ForcePopupView observe the same centralized countdown (no duplicate timers)
+- SchedulerEngine auto-starts countdown after `executeSchedule()` if `schedule.autoSend && !result.skipped`
+- When views appear, they only start countdown if one isn't already running (avoids resetting mid-countdown)
 - Auto-send targets the channel directly (no SendTargetOverlay) for non-thread schedules
 - Only applies to `.pending` sessions with a non-nil draftReply; skipped sessions are unaffected
+
+### Background Processing Flow
+
+Both RewriteOverlay and ActiveReplyView show a "Run in Background" button while Claude is processing. When clicked:
+
+1. The overlay transfers the work to `SchedulerEngine.runRewriteInBackground()` or `runActiveReplyInBackground()`
+2. The overlay dismisses immediately
+3. `SchedulerEngine.backgroundTasks[scheduleId]` tracks the in-progress task
+4. ScheduleDetailView shows a purple progress indicator near the draft area
+5. When Claude finishes, the schedule is updated and the user is notified using the schedule's configured notification mode
+6. `backgroundTasks` entry is removed
 
 ### Authentication Flow
 

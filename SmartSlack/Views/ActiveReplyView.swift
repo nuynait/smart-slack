@@ -4,6 +4,7 @@ struct ActiveReplyView: View {
     let schedule: Schedule
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @EnvironmentObject var schedulerEngine: SchedulerEngine
     @Binding var isPresented: Bool
     @State private var prompt = ""
     @State private var isGenerating = false
@@ -60,6 +61,20 @@ struct ActiveReplyView: View {
                     .keyboardShortcut(.cancelAction)
 
                     Spacer()
+
+                    if isGenerating {
+                        Button {
+                            schedulerEngine.runActiveReplyInBackground(
+                                schedule: schedule,
+                                prompt: prompt,
+                                userNames: appVM.userNameCache
+                            )
+                            isPresented = false
+                        } label: {
+                            Label("Run in Background", systemImage: "arrow.down.app")
+                        }
+                        .buttonStyle(.secondary)
+                    }
 
                     Button {
                         Task { await generateReply() }

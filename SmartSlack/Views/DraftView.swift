@@ -5,6 +5,7 @@ struct DraftView: View {
     let session: Session
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @EnvironmentObject var schedulerEngine: SchedulerEngine
     @Binding var showEditSend: Bool
     @Binding var showRewrite: Bool
     @Binding var showSendTarget: Bool
@@ -15,9 +16,9 @@ struct DraftView: View {
 
     @State private var isGenerating = false
 
-    // Auto-send countdown
-    @State private var autoSendCountdown: Int = 10
-    @State private var autoSendTimer: Timer?
+    private var autoSendCountdown: Int {
+        schedulerEngine.autoSendCountdowns[schedule.id] ?? 10
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -35,18 +36,10 @@ struct DraftView: View {
         }
         .onChange(of: schedule.autoSend) { _, autoSend in
             if autoSend && session.finalAction == .pending && session.draftReply != nil {
-                startAutoSendCountdown()
+                schedulerEngine.startAutoSend(for: schedule.id)
             } else {
-                cancelAutoSendCountdown()
+                schedulerEngine.cancelAutoSend(for: schedule.id)
             }
-        }
-        .onAppear {
-            if schedule.autoSend && session.finalAction == .pending && session.draftReply != nil {
-                startAutoSendCountdown()
-            }
-        }
-        .onDisappear {
-            cancelAutoSendCountdown()
         }
     }
 
@@ -211,34 +204,6 @@ struct DraftView: View {
             .buttonStyle(.secondary)
             .disabled(isSending)
         }
-    }
-
-    // MARK: - Auto-send Timer
-
-    private func startAutoSendCountdown() {
-        cancelAutoSendCountdown()
-        autoSendCountdown = 10
-        autoSendTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            Task { @MainActor in
-                autoSendCountdown -= 1
-                if autoSendCountdown <= 0 {
-                    cancelAutoSendCountdown()
-                    await autoSend()
-                }
-            }
-        }
-    }
-
-    private func cancelAutoSendCountdown() {
-        autoSendTimer?.invalidate()
-        autoSendTimer = nil
-        autoSendCountdown = 10
-    }
-
-    private func autoSend() async {
-        guard let draft = session.draftReply else { return }
-        let threadTs = schedule.type == .thread ? schedule.threadTs : nil
-        await send(draft: draft, threadTs: threadTs)
     }
 
     // MARK: - Actions

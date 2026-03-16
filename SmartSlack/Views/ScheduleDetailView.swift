@@ -176,6 +176,20 @@ struct ScheduleDetailView: View {
                     .font(.title2.bold())
 
                 statusPill
+
+                if schedule.autoSend {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.fill")
+                            .font(.caption2)
+                        Text("Auto Send")
+                            .font(.caption.bold())
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.2))
+                    .foregroundStyle(.blue)
+                    .clipShape(Capsule())
+                }
             }
 
             HStack(spacing: 16) {
@@ -390,6 +404,20 @@ struct ScheduleDetailView: View {
                     .padding(12)
                     .background(.purple.opacity(0.05))
                     .cornerRadius(8)
+            }
+
+            // Background processing indicator
+            if let bgTask = schedulerEngine.backgroundTasks[schedule.id] {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(bgTask.type.rawValue)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.purple)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.purple.opacity(0.08))
+                .cornerRadius(8)
             }
 
             // Auto-send toggle

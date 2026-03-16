@@ -5,6 +5,7 @@ struct RewriteOverlay: View {
     let session: Session
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @EnvironmentObject var schedulerEngine: SchedulerEngine
     @Binding var isPresented: Bool
     @State private var rewritePrompt = ""
     @State private var isRewriting = false
@@ -72,6 +73,21 @@ struct RewriteOverlay: View {
                     .keyboardShortcut(.cancelAction)
 
                     Spacer()
+
+                    if isRewriting {
+                        Button {
+                            schedulerEngine.runRewriteInBackground(
+                                schedule: schedule,
+                                session: session,
+                                rewritePrompt: rewritePrompt,
+                                userNames: appVM.userNameCache
+                            )
+                            isPresented = false
+                        } label: {
+                            Label("Run in Background", systemImage: "arrow.down.app")
+                        }
+                        .buttonStyle(.secondary)
+                    }
 
                     Button {
                         Task { await rewrite() }
