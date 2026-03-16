@@ -94,7 +94,10 @@ struct ForcePopupView: View {
                         Button {
                             showRewrite = true
                         } label: {
-                            Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
+                            HStack(spacing: 4) {
+                                Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
+                                KeyboardHintView(key: "r")
+                            }
                         }
                         .buttonStyle(.secondary)
                         .disabled(activeSession.draftReply == nil || isSending)
@@ -190,6 +193,7 @@ struct ForcePopupView: View {
             Task { await sendAndDismiss() }
             return .handled
         }
+        .onKeyPress(characters: .init(charactersIn: "eri"), action: handleKeyPress)
     }
 
     // MARK: - Header
@@ -377,7 +381,10 @@ struct ForcePopupView: View {
             Button {
                 showEditSend = true
             } label: {
-                Label("Edit & Send", systemImage: "pencil")
+                HStack(spacing: 4) {
+                    Label("Edit & Send", systemImage: "pencil")
+                    KeyboardHintView(key: "e")
+                }
             }
             .buttonStyle(.secondary)
             .disabled(activeSession.draftReply == nil || isSending)
@@ -385,7 +392,10 @@ struct ForcePopupView: View {
             Button {
                 ignore()
             } label: {
-                Label("Ignore", systemImage: "xmark")
+                HStack(spacing: 4) {
+                    Label("Ignore", systemImage: "xmark")
+                    KeyboardHintView(key: "i")
+                }
             }
             .buttonStyle(.secondary)
             .disabled(isSending)
@@ -602,6 +612,28 @@ struct ForcePopupView: View {
     }
 
     // MARK: - Actions
+
+    private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
+        let active = currentSession ?? session
+        guard !isAutoSend, !showEditSend, !showRewrite, !showSendTarget,
+              active.finalAction == .pending else { return .ignored }
+
+        switch press.characters {
+        case "e":
+            guard active.draftReply != nil else { return .ignored }
+            showEditSend = true
+            return .handled
+        case "r":
+            guard active.draftReply != nil else { return .ignored }
+            showRewrite = true
+            return .handled
+        case "i":
+            ignore()
+            return .handled
+        default:
+            return .ignored
+        }
+    }
 
     private func sendAndDismiss() async {
         guard let slackService = appVM.slackService,
