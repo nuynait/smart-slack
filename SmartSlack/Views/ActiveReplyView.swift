@@ -8,6 +8,7 @@ struct ActiveReplyView: View {
     @Binding var isPresented: Bool
     @State private var prompt = ""
     @State private var isGenerating = false
+    @State private var sentToBackground = false
     @State private var error: String?
     @FocusState private var isPromptFocused: Bool
 
@@ -64,11 +65,8 @@ struct ActiveReplyView: View {
 
                     if isGenerating {
                         Button {
-                            schedulerEngine.runActiveReplyInBackground(
-                                schedule: schedule,
-                                prompt: prompt,
-                                userNames: appVM.userNameCache
-                            )
+                            sentToBackground = true
+                            schedulerEngine.backgroundTasks[schedule.id] = BackgroundTaskInfo(scheduleId: schedule.id, type: .activeReply)
                             isPresented = false
                         } label: {
                             Label("Run in Background", systemImage: "arrow.down.app")
@@ -156,8 +154,21 @@ struct ActiveReplyView: View {
             updated.sessions.append(session)
             scheduleStore.updateSchedule(updated)
 
-            isPresented = false
+            if sentToBackground {
+                schedulerEngine.backgroundTasks.removeValue(forKey: schedule.id)
+                if let latestSession = updated.latestSession {
+                    appVM.notificationService.notifySessionReady(schedule: updated, session: latestSession)
+                }
+                if updated.autoSend {
+                    schedulerEngine.startAutoSend(for: schedule.id)
+                }
+            } else {
+                isPresented = false
+            }
         } catch {
+            if sentToBackground {
+                schedulerEngine.backgroundTasks.removeValue(forKey: schedule.id)
+            }
             self.error = error.localizedDescription
         }
 

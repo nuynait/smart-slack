@@ -440,6 +440,7 @@ struct ScheduleDetailView: View {
                 }
             }
             .buttonStyle(.secondary)
+            .disabled(schedulerEngine.backgroundTasks[schedule.id] != nil)
 
             // Draft History
             if !session.draftHistory.isEmpty {

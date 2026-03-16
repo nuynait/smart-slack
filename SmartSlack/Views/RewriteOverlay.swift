@@ -9,6 +9,7 @@ struct RewriteOverlay: View {
     @Binding var isPresented: Bool
     @State private var rewritePrompt = ""
     @State private var isRewriting = false
+    @State private var sentToBackground = false
     @State private var error: String?
     @FocusState private var isPromptFocused: Bool
 
@@ -76,12 +77,8 @@ struct RewriteOverlay: View {
 
                     if isRewriting {
                         Button {
-                            schedulerEngine.runRewriteInBackground(
-                                schedule: schedule,
-                                session: session,
-                                rewritePrompt: rewritePrompt,
-                                userNames: appVM.userNameCache
-                            )
+                            sentToBackground = true
+                            schedulerEngine.backgroundTasks[schedule.id] = BackgroundTaskInfo(scheduleId: schedule.id, type: .rewrite)
                             isPresented = false
                         } label: {
                             Label("Run in Background", systemImage: "arrow.down.app")
@@ -173,8 +170,19 @@ struct RewriteOverlay: View {
                 updated.sessions[updated.sessions.count - 1] = lastSession
             }
             scheduleStore.updateSchedule(updated)
-            isPresented = false
+
+            if sentToBackground {
+                schedulerEngine.backgroundTasks.removeValue(forKey: schedule.id)
+                if let session = updated.latestSession {
+                    appVM.notificationService.notifySessionReady(schedule: updated, session: session)
+                }
+            } else {
+                isPresented = false
+            }
         } catch {
+            if sentToBackground {
+                schedulerEngine.backgroundTasks.removeValue(forKey: schedule.id)
+            }
             self.error = error.localizedDescription
         }
 

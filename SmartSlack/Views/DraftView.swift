@@ -20,6 +20,10 @@ struct DraftView: View {
         schedulerEngine.autoSendCountdowns[schedule.id] ?? 10
     }
 
+    private var isBackgroundProcessing: Bool {
+        schedulerEngine.backgroundTasks[schedule.id] != nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if session.finalAction == .skipped {
@@ -80,7 +84,7 @@ struct DraftView: View {
                     }
                 }
                 .buttonStyle(.primary)
-                .disabled(isGenerating)
+                .disabled(isGenerating || isBackgroundProcessing)
 
                 Button {
                     ignore()
@@ -91,7 +95,7 @@ struct DraftView: View {
                     }
                 }
                 .buttonStyle(.secondary)
-                .disabled(isGenerating)
+                .disabled(isGenerating || isBackgroundProcessing)
             }
         }
     }
@@ -169,7 +173,7 @@ struct DraftView: View {
                 }
             }
             .buttonStyle(.primary)
-            .disabled(session.draftReply == nil || isSending)
+            .disabled(session.draftReply == nil || isSending || isBackgroundProcessing)
 
             Button {
                 showEditSend = true
@@ -180,7 +184,7 @@ struct DraftView: View {
                 }
             }
             .buttonStyle(.secondary)
-            .disabled(session.draftReply == nil || isSending)
+            .disabled(session.draftReply == nil || isSending || isBackgroundProcessing)
 
             Button {
                 showRewrite = true
@@ -191,7 +195,7 @@ struct DraftView: View {
                 }
             }
             .buttonStyle(.secondary)
-            .disabled(session.draftReply == nil || isSending)
+            .disabled(session.draftReply == nil || isSending || isBackgroundProcessing)
 
             Button {
                 ignore()
@@ -202,7 +206,7 @@ struct DraftView: View {
                 }
             }
             .buttonStyle(.secondary)
-            .disabled(isSending)
+            .disabled(isSending || isBackgroundProcessing)
         }
     }
 
