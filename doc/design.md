@@ -66,6 +66,7 @@ SmartSlack/
 │   ├── EditSendOverlay.swift        # Overlay dialog: edit draft text before sending
 │   ├── RewriteOverlay.swift         # Overlay dialog: rewrite draft via Claude with instructions
 │   ├── SendTargetOverlay.swift      # Overlay: choose send to channel or reply in thread
+│   ├── ImagePreviewOverlay.swift    # Full-size image viewer with h/l navigation
 │   ├── DraftHistoryView.swift       # Previous drafts with send fallback
 │   ├── AddScheduleFromLinkView.swift # Create schedule from Slack message link (supports pre-filled initialLink)
 │   ├── EditScheduleView.swift       # Edit schedule properties

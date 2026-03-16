@@ -18,6 +18,8 @@ struct ScheduleDetailView: View {
     @State private var monitorThreadLink: String?
     @State private var showSendTarget = false
     @State private var sendTargetDraft = ""
+    @State private var showImagePreview = false
+    @State private var imagePreviewIndex = 0
 
     var body: some View {
         contentView
@@ -65,6 +67,9 @@ struct ScheduleDetailView: View {
                 }
                 if showSendTarget {
                     SendTargetOverlay(schedule: schedule, draftText: sendTargetDraft, isPresented: $showSendTarget)
+                }
+                if showImagePreview {
+                    ImagePreviewOverlay(images: allConversationImages, slackService: appVM.slackService, selectedIndex: $imagePreviewIndex, isPresented: $showImagePreview)
                 }
             }
     }
@@ -277,6 +282,10 @@ struct ScheduleDetailView: View {
         return Date(timeIntervalSince1970: interval)
     }
 
+    private var allConversationImages: [SlackFile] {
+        conversationMessages.flatMap(\.imageFiles)
+    }
+
     private var latestMessageIds: Set<String> {
         guard let latest = schedule.latestSession else { return [] }
         return Set(latest.messages.compactMap(\.ts))
@@ -455,9 +464,15 @@ struct ScheduleDetailView: View {
     }
 
     private func messageImages(_ files: [SlackFile]) -> some View {
-        HStack(spacing: 6) {
+        let allImages = allConversationImages
+        return HStack(spacing: 6) {
             ForEach(files) { file in
-                SlackImageView(file: file, slackService: appVM.slackService)
+                SlackImageView(file: file, slackService: appVM.slackService, onTap: {
+                    if let idx = allImages.firstIndex(where: { $0.id == file.id }) {
+                        imagePreviewIndex = idx
+                        showImagePreview = true
+                    }
+                })
             }
         }
     }

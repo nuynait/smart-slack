@@ -3,6 +3,7 @@ import SwiftUI
 struct SlackImageView: View {
     let file: SlackFile
     let slackService: SlackService?
+    var onTap: (() -> Void)?
 
     @State private var image: NSImage?
     @State private var isLoading = false
@@ -15,6 +16,9 @@ struct SlackImageView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: 240, maxHeight: 180)
                     .cornerRadius(6)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onTap?() }
+                    .cursor(.pointingHand)
             } else if isLoading {
                 ProgressView()
                     .controlSize(.small)
@@ -56,5 +60,22 @@ struct SlackImageView: View {
             // Silently fail - show placeholder
         }
         isLoading = false
+    }
+}
+
+// MARK: - Cursor modifier
+
+private struct CursorModifier: ViewModifier {
+    let cursor: NSCursor
+    func body(content: Content) -> some View {
+        content.onHover { inside in
+            if inside { cursor.push() } else { NSCursor.pop() }
+        }
+    }
+}
+
+extension View {
+    func cursor(_ cursor: NSCursor) -> some View {
+        modifier(CursorModifier(cursor: cursor))
     }
 }

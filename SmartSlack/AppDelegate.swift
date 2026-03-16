@@ -83,6 +83,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         guard let chars = event.charactersIgnoringModifiers else { return event }
 
+        // Image preview mode — h/l/Esc/arrows
+        if keyboardNav.isInImagePreview {
+            if chars == "h" || event.keyCode == 123 { // h or left arrow
+                keyboardNav.imagePreviewAction = .previous
+                return nil
+            }
+            if chars == "l" || event.keyCode == 124 { // l or right arrow
+                keyboardNav.imagePreviewAction = .next
+                return nil
+            }
+            if event.keyCode == 53 { // Esc
+                keyboardNav.imagePreviewAction = .dismiss
+                return nil
+            }
+            return event
+        }
+
         // Delete confirmation mode — y/n/Esc
         if keyboardNav.confirmingDelete {
             if chars == "y" {

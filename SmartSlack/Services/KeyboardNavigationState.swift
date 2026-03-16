@@ -24,6 +24,11 @@ final class KeyboardNavigationState: ObservableObject {
     @Published var editAndSend = false
     @Published var rewriteDraft = false
     @Published var ignoreDraft = false
+
+    // Image preview
+    @Published var isInImagePreview = false
+    @Published var imagePreviewAction: ImagePreviewAction?
+    enum ImagePreviewAction { case next, previous, dismiss }
     @Published var confirmingDelete = false
     @Published var confirmDeleteAnswer: Bool?  // true = yes, false = no
 

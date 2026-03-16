@@ -10,6 +10,8 @@ struct ForcePopupView: View {
     @State private var isRewriting = false
     @State private var isSending = false
     @State private var error: String?
+    @State private var showSendTarget = false
+    @State private var sendTargetDraft = ""
 
     private var currentSession: Session? {
         scheduleStore.schedule(byId: schedule.id)?.latestSession
@@ -69,12 +71,24 @@ struct ForcePopupView: View {
                     // Actions
                     HStack(spacing: 12) {
                         Button {
-                            Task { await send() }
+                            let sched = currentSchedule ?? schedule
+                            let draft = activeSession.draftReply ?? ""
+                            if sched.type != .thread {
+                                sendTargetDraft = draft
+                                showSendTarget = true
+                            } else {
+                                Task { await send() }
+                            }
                         } label: {
                             if isSending {
                                 ProgressView().controlSize(.small)
                             } else {
-                                Label("Send", systemImage: "paperplane.fill")
+                                let sched = currentSchedule ?? schedule
+                                if sched.type != .thread {
+                                    Label("Send to...", systemImage: "paperplane.fill")
+                                } else {
+                                    Label("Send", systemImage: "paperplane.fill")
+                                }
                             }
                         }
                         .buttonStyle(.primary)
@@ -139,6 +153,18 @@ struct ForcePopupView: View {
             }
         }
         .frame(width: 600, height: 650)
+        .overlay {
+            if showSendTarget {
+                SendTargetOverlay(schedule: currentSchedule ?? schedule, draftText: sendTargetDraft, isPresented: $showSendTarget)
+            }
+        }
+        .onChange(of: showSendTarget) { _, showing in
+            // When send target dismisses, check if session was sent
+            if !showing, let sched = currentSchedule,
+               sched.latestSession?.finalAction == .sent {
+                notificationService.forcePopupScheduleId = nil
+            }
+        }
     }
 
     private func recentMessages(from schedule: Schedule) -> [SlackMessage] {
