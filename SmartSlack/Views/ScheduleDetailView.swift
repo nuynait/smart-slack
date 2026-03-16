@@ -32,7 +32,9 @@ struct ScheduleDetailView: View {
                 PromptPickerView { selectedText in
                     var updated = schedule
                     updated.prompt = selectedText
+                    updated.filterSummary = nil
                     scheduleStore.updateSchedule(updated)
+                    appVM.analyzePromptFilter(scheduleId: schedule.id, prompt: selectedText)
                 }
                 .environmentObject(promptStore)
             }
@@ -202,22 +204,49 @@ struct ScheduleDetailView: View {
             }
 
             if !schedule.prompt.isEmpty {
-                HStack(alignment: .top) {
-                    Text(schedule.prompt)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        showPromptPicker = true
-                    } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.caption)
-                            KeyboardHintView(key: "p")
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top) {
+                        Text(schedule.prompt)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            showPromptPicker = true
+                        } label: {
+                            HStack(spacing: 2) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.caption)
+                                KeyboardHintView(key: "p")
+                            }
                         }
+                        .buttonStyle(.plain)
+                        .help("Change prompt")
                     }
-                    .buttonStyle(.plain)
-                    .help("Change prompt")
+
+                    if appVM.analyzingFilterScheduleIds.contains(schedule.id) {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Analyzing prompt for filters...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.quaternary.opacity(0.5))
+                        .cornerRadius(4)
+                    } else if let filter = schedule.filterSummary {
+                        HStack(spacing: 4) {
+                            Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                                .foregroundStyle(.orange)
+                            Text("Filter: \(filter)")
+                                .font(.caption.bold())
+                                .foregroundStyle(.orange)
+                        }
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.orange.opacity(0.08))
+                        .cornerRadius(4)
+                    }
                 }
                 .padding(8)
                 .background(.quaternary)

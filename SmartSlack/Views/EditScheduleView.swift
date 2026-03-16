@@ -6,6 +6,7 @@ struct EditScheduleView: View {
     @EnvironmentObject var schedulerEngine: SchedulerEngine
     @EnvironmentObject var logService: LogService
     @EnvironmentObject var promptStore: PromptStore
+    @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String
@@ -133,19 +134,25 @@ struct EditScheduleView: View {
     }
 
     private func save() {
+        let promptChanged = prompt != schedule.prompt
         var updated = schedule
         updated.name = name
         updated.intervalSeconds = Int(intervalSeconds)
         updated.prompt = prompt
         updated.notificationMode = notificationMode
         updated.skipNotificationMode = skipNotificationMode
+        updated.filterSummary = nil
         scheduleStore.updateSchedule(updated)
 
         // Save prompt to history if changed
-        if prompt != schedule.prompt {
+        if promptChanged {
             let savedPrompt = promptStore.addPrompt(text: prompt)
             Task { await promptStore.generateTags(for: savedPrompt.id) }
         }
+
+        // Always re-analyze filter on save
+        print("[SmartSlack] EditScheduleView.save() calling analyzePromptFilter, appVM: \(ObjectIdentifier(appVM))")
+        appVM.analyzePromptFilter(scheduleId: updated.id, prompt: prompt)
 
         // Restart timer with new interval if active
         if updated.status == .active {
@@ -155,5 +162,7 @@ struct EditScheduleView: View {
 
         dismiss()
     }
+
+
 
 }

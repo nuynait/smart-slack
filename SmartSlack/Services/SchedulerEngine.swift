@@ -158,7 +158,7 @@ final class SchedulerEngine: ObservableObject {
             guard !newMessages.isEmpty else {
                 logService.log(.verbose, scheduleId: schedule.id, sessionId: sessionId, message: "No new messages")
                 runningSchedules.remove(schedule.id)
-                var updated = schedule
+                var updated = scheduleStore.schedule(byId: schedule.id) ?? schedule
                 updated.lastRun = Date()
                 scheduleStore.updateSchedule(updated)
                 return
@@ -170,7 +170,7 @@ final class SchedulerEngine: ObservableObject {
                 if allFromOwner {
                     logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "All \(newMessages.count) new messages are from owner, storing without Claude")
                     runningSchedules.remove(schedule.id)
-                    var updated = schedule
+                    var updated = scheduleStore.schedule(byId: schedule.id) ?? schedule
                     updated.lastRun = Date()
                     updated.lastMessageTs = newMessages.compactMap(\.ts).max() ?? schedule.lastMessageTs
                     updated.pendingMessages.append(contentsOf: newMessages)
@@ -222,7 +222,8 @@ final class SchedulerEngine: ObservableObject {
             )
 
             // Update schedule, clear pending messages
-            var updated = schedule
+            // Re-read from store to avoid overwriting fields updated concurrently (e.g. filterSummary)
+            var updated = scheduleStore.schedule(byId: schedule.id) ?? schedule
             updated.lastRun = Date()
             updated.lastMessageTs = newMessages.compactMap(\.ts).max() ?? schedule.lastMessageTs
             updated.pendingMessages = []

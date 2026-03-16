@@ -90,6 +90,7 @@ struct Schedule: Codable, Identifiable, Hashable {
     var initialMessageCount: Int
     var notificationMode: NotificationMode
     var skipNotificationMode: NotificationMode
+    var filterSummary: String?
 
     /// Latest session that was processed by Claude (has a summary).
     var latestSession: Session? {
@@ -102,7 +103,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         return latest.finalAction == .pending
     }
 
-    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification, skipNotificationMode: NotificationMode = .quiet) {
+    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification, skipNotificationMode: NotificationMode = .quiet, filterSummary: String? = nil) {
         self.id = id
         self.name = name
         self.type = type
@@ -120,6 +121,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         self.initialMessageCount = initialMessageCount
         self.notificationMode = notificationMode
         self.skipNotificationMode = skipNotificationMode
+        self.filterSummary = filterSummary
     }
 
     init(from decoder: Decoder) throws {
@@ -141,5 +143,6 @@ struct Schedule: Codable, Identifiable, Hashable {
         initialMessageCount = try container.decodeIfPresent(Int.self, forKey: .initialMessageCount) ?? 5
         notificationMode = try container.decodeIfPresent(NotificationMode.self, forKey: .notificationMode) ?? .macosNotification
         skipNotificationMode = try container.decodeIfPresent(NotificationMode.self, forKey: .skipNotificationMode) ?? .quiet
+        filterSummary = try container.decodeIfPresent(String.self, forKey: .filterSummary)
     }
 }

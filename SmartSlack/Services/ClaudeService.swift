@@ -168,6 +168,31 @@ enum ClaudeService {
         return try await runClaude(prompt: fullPrompt, scheduleId: scheduleId)
     }
 
+    static func analyzePromptFilter(prompt: String) async throws -> String? {
+        let claudePrompt = """
+        Analyze the following user prompt for a Slack monitoring tool. Determine if it contains any filtering criteria — that is, instructions to only care about certain topics, keywords, people, or types of messages.
+
+        If the prompt contains filtering criteria, respond with a SHORT one-line summary of what the filter focuses on. For example:
+        - "Native development, Garcon, mentions of Jerry or Tianyun"
+        - "Deployment issues and CI/CD failures"
+        - "Questions directed at the owner"
+
+        If the prompt does NOT contain any filtering criteria (it's a general instruction to summarize/respond to everything), respond with exactly "NONE".
+
+        Prompt:
+        \(prompt)
+
+        Filter summary (one line, or "NONE"):
+        """
+
+        let result = try await runClaudeSimple(prompt: claudePrompt)
+        let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.uppercased() == "NONE" || trimmed.isEmpty {
+            return nil
+        }
+        return trimmed
+    }
+
     static func generateTags(promptText: String, existingTags: [String]) async throws -> [String] {
         let existingList = existingTags.isEmpty
             ? "None yet."
