@@ -19,6 +19,7 @@ final class AppViewModel: ObservableObject {
     let userColorStore = UserColorStore()
     let notificationService = NotificationService()
     let promptStore = PromptStore()
+    let updateService = UpdateService()
     lazy var schedulerEngine = SchedulerEngine(scheduleStore: scheduleStore, logService: logService)
 
     private(set) var slackService: SlackService?
@@ -39,6 +40,7 @@ final class AppViewModel: ObservableObject {
             isAuthenticated = true
             Task { await validateAndStart() }
         }
+        Task { await updateService.checkForUpdates() }
     }
 
     func login(token: String) async {

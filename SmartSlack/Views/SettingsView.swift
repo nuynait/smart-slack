@@ -77,6 +77,72 @@ struct SettingsView: View {
                 }
                 .formCard()
 
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Updates")
+                        .font(.headline)
+
+                    HStack {
+                        Text("Current Version")
+                        Spacer()
+                        Text("v\(appVM.updateService.currentVersion)")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if appVM.updateService.updateAvailable, let release = appVM.updateService.latestRelease {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .foregroundStyle(.green)
+                            Text("Update available: \(release.tagName)")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.green)
+                        }
+
+                        if let body = release.body, !body.isEmpty {
+                            Text(body)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(5)
+                        }
+
+                        if appVM.updateService.isDownloading {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ProgressView(value: appVM.updateService.downloadProgress)
+                                    .tint(.blue)
+                                Text("Downloading and installing...")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Button("Download & Install") {
+                                Task { await appVM.updateService.downloadAndInstall() }
+                            }
+                            .buttonStyle(.primary)
+                        }
+                    } else {
+                        Button {
+                            Task { await appVM.updateService.checkForUpdates() }
+                        } label: {
+                            if appVM.updateService.isChecking {
+                                HStack(spacing: 6) {
+                                    ProgressView().controlSize(.small)
+                                    Text("Checking...")
+                                }
+                            } else {
+                                Text("Check for Updates")
+                            }
+                        }
+                        .buttonStyle(.secondary)
+                        .disabled(appVM.updateService.isChecking)
+                    }
+
+                    if let error = appVM.updateService.error {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .formCard()
+
                 if let team = appVM.slackTeam, let user = appVM.slackUser {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Account")

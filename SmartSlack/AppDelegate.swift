@@ -27,6 +27,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
             .store(in: &cancellables)
 
+        appVM.updateService.$updateAvailable
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateButton()
+            }
+            .store(in: &cancellables)
+
         // Watch for force popup requests
         appVM.notificationService.$forcePopupScheduleId
             .receive(on: RunLoop.main)
@@ -300,6 +307,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             attributed.append(NSAttributedString(
                 string: "\(failedCount)",
                 attributes: [.foregroundColor: NSColor.systemRed, .font: countFont]
+            ))
+        }
+
+        if appVM.updateService.updateAvailable {
+            attributed.append(NSAttributedString(
+                string: "\u{2191}",
+                attributes: [.foregroundColor: NSColor.systemBlue, .font: countFont]
             ))
         }
 

@@ -51,6 +51,7 @@ SmartSlack/
 │   ├── UserColorStore.swift         # Persistent user color assignments
 │   ├── NotificationService.swift    # macOS notifications + force popup management
 │   ├── PromptStore.swift            # Prompt history, saved prompts, tag generation
+│   ├── UpdateService.swift          # GitHub release auto-updater
 │   └── KeyboardNavigationState.swift # Centralized keyboard navigation state
 │
 ├── ViewModels/
@@ -76,7 +77,7 @@ SmartSlack/
 │   ├── LogViewerView.swift          # Filterable log viewer window with auto-scroll
 │   ├── MarkdownView.swift           # Markdown renderer for Claude summaries
 │   ├── SlackImageView.swift         # Async Slack image downloader + preview
-│   ├── SettingsView.swift           # App settings with notification/prompt config
+│   ├── SettingsView.swift           # App settings: notifications, prompts, updates, account
 │   ├── ForcePopupView.swift         # Always-on-top popup for force notification mode
 │   ├── PromptManagerView.swift      # Manage prompt history and saved prompts
 │   ├── PromptEditorView.swift       # Edit a prompt with auto-tagging
@@ -417,6 +418,31 @@ Manages prompt history, saved (starred) prompts, and auto-tagging via Claude.
 - `ScheduleDetailView` header has a change-prompt button that opens `PromptPickerView`
 - `SettingsView` has a "Manage Prompts" button opening `PromptManagerView` and configurable history limit
 - Tags display uses `FlowLayout` (custom Layout) with colored capsule pills
+
+### UpdateService (ObservableObject, @MainActor)
+
+Lightweight in-app auto-updater using GitHub Releases API. No external frameworks required.
+
+**Published state:**
+- `latestRelease: GitHubRelease?` — latest release metadata from GitHub
+- `updateAvailable: Bool` — true when remote version is newer than `CFBundleShortVersionString`
+- `isChecking: Bool` — checking for updates in progress
+- `isDownloading: Bool` — download/install in progress
+- `downloadProgress: Double` — 0.0 to 1.0
+- `error: String?` — user-facing error message
+
+**Flow:**
+1. `checkForUpdates()` — fetches `GET /repos/nuynait/smart-slack/releases/latest`, decodes `GitHubRelease`, compares semantic versions
+2. `downloadAndInstall()` — downloads first `.zip` asset, extracts via `/usr/bin/unzip`, replaces current `.app` bundle in place, removes quarantine xattr (`/usr/bin/xattr -dr com.apple.quarantine`), relaunches via `open` after 1s delay
+3. If no `.zip` asset found, opens the release page in browser as fallback
+
+**Version comparison:** Splits on `.`, compares each segment as integer. `v` prefix stripped.
+
+**Integration:**
+- Instantiated by `AppViewModel` as `updateService`
+- Checks for updates automatically on app launch
+- Menu bar shows blue `↑` indicator when update available
+- Settings view has "Updates" card with version display, check button, and download/install button
 
 ---
 
