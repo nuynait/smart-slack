@@ -218,7 +218,7 @@ struct ScheduleDetailView: View {
                 Label(schedule.channelName, systemImage: channelIcon)
                     .font(.subheadline)
 
-                Label("Every \(formatInterval(schedule.intervalSeconds))", systemImage: "clock")
+                Label(schedule.intervalSeconds == 0 ? "Manual" : "Every \(formatInterval(schedule.intervalSeconds))", systemImage: "clock")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 

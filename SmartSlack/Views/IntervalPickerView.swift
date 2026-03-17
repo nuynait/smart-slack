@@ -15,6 +15,7 @@ struct IntervalPickerView: View {
         ("30m", 1800),
         ("1h", 3600),
         ("5h", 18000),
+        ("Never", 0),
     ]
 
     private var sliderStep: Double {
@@ -22,7 +23,7 @@ struct IntervalPickerView: View {
     }
 
     private var sliderRange: ClosedRange<Double> {
-        let values = Self.presets.map(\.1)
+        let values = Self.presets.filter { $0.1 > 0 }.map(\.1)
         guard let idx = values.firstIndex(of: selectedPresetValue) else {
             return 1...299
         }
@@ -49,7 +50,11 @@ struct IntervalPickerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Check every \(formatInterval(Int(intervalSeconds)))")
+                if intervalSeconds == 0 {
+                    Text("Manual trigger only")
+                } else {
+                    Text("Check every \(formatInterval(Int(intervalSeconds)))")
+                }
                 Spacer()
             }
 
@@ -77,13 +82,15 @@ struct IntervalPickerView: View {
                 Spacer()
             }
 
-            if showSlider {
-                Slider(value: $intervalSeconds, in: sliderRange, step: sliderStep)
-            } else {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .frame(height: 20)
+            if intervalSeconds > 0 {
+                if showSlider {
+                    Slider(value: $intervalSeconds, in: sliderRange, step: sliderStep)
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(height: 20)
+                }
             }
         }
         .onAppear {
@@ -96,7 +103,8 @@ struct IntervalPickerView: View {
     }
 
     private func closestPreset(to value: Double) -> Double {
-        Self.presets.min(by: { abs($0.1 - value) < abs($1.1 - value) })?.1 ?? 300
+        if value == 0 { return 0 }
+        return Self.presets.filter { $0.1 > 0 }.min(by: { abs($0.1 - value) < abs($1.1 - value) })?.1 ?? 300
     }
 
     private func formatInterval(_ seconds: Int) -> String {

@@ -58,6 +58,10 @@ struct ScheduleRowView: View {
             if isRunning {
                 ProgressView()
                     .controlSize(.small)
+            } else if schedule.intervalSeconds == 0 && schedule.status == .active {
+                Text("Manual")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             } else if let countdown, schedule.status == .active {
                 Text(countdown.countdownFormatted)
                     .font(.caption.monospaced())

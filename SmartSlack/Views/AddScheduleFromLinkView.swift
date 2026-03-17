@@ -17,6 +17,7 @@ struct AddScheduleFromLinkView: View {
     @State private var initialMessageCount = 5
     @State private var notificationMode: NotificationMode = .macosNotification
     @State private var skipNotificationMode: NotificationMode = .quiet
+    @State private var alwaysRun = false
     @State private var error: String?
     @State private var isResolving = false
     @State private var resolved: ResolvedLink?
@@ -153,6 +154,17 @@ struct AddScheduleFromLinkView: View {
                             Text("Quiet").tag(NotificationMode.quiet)
                         }
                         .pickerStyle(.segmented)
+                    }
+                    .formCard()
+
+                    Toggle(isOn: $alwaysRun) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Always Run Claude")
+                                .font(.headline)
+                            Text("Run Claude analysis every check interval, even when no new messages are found")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .formCard()
 
@@ -347,7 +359,8 @@ struct AddScheduleFromLinkView: View {
             sessions: [],
             initialMessageCount: initialMessageCount,
             notificationMode: notificationMode,
-            skipNotificationMode: skipNotificationMode
+            skipNotificationMode: skipNotificationMode,
+            alwaysRun: alwaysRun
         )
 
         scheduleStore.saveSchedule(schedule)

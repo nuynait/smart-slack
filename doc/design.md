@@ -61,7 +61,7 @@ SmartSlack/
 │   ├── ContentView.swift            # Auth gate
 │   ├── LoginView.swift              # Token input + setup instructions
 │   ├── MainView.swift               # NavigationSplitView + toolbar
-│   ├── SidebarView.swift            # Active/Completed/Failed tabs + list
+│   ├── SidebarView.swift            # Active/Manual/Completed/Failed tabs + list
 │   ├── ScheduleRowView.swift        # Row: status dot, name, countdown
 │   ├── ScheduleDetailView.swift     # Full detail: header (with filter/memory badges), session (with memory report), conversation; shows DraftView for pending/skipped
 │   ├── DraftView.swift              # Send/Edit & Send/Rewrite/Ignore buttons; auto-send countdown (observes SchedulerEngine); skipped view with Generate Draft
@@ -107,7 +107,7 @@ Schedule
 ├── threadTs: String?           # Thread parent timestamp (for .thread type)
 ├── channelName: String         # Display name
 ├── prompt: String              # Instructions for Claude
-├── intervalSeconds: Int        # Check frequency (1s to 86400s)
+├── intervalSeconds: Int        # Check frequency (1s to 86400s); 0 = manual trigger only
 ├── status: ScheduleStatus      # .active | .completed | .failed
 ├── createdAt: Date
 ├── lastRun: Date?              # When the schedule last executed
@@ -120,7 +120,8 @@ Schedule
 ├── filterSummary: String?     # One-line summary of the prompt's filter criteria (e.g., "Native development only")
 ├── memorySummary: String?     # One-line summary of what the prompt will memorize (e.g., "Key decisions and action items")
 ├── autoSend: Bool             # When true, drafts are auto-sent after 10-second countdown
-└── signDrafts: Bool           # When true, appends "— drafted with Claude Code" signature to sent messages (default true; enabling autoSend forces this on)
+├── signDrafts: Bool           # When true, appends "— drafted with Claude Code" signature to sent messages (default true; enabling autoSend forces this on)
+└── alwaysRun: Bool            # When true, runs Claude every tick even with no new messages (uses previous session's messages as context)
 ```
 
 ### Session
@@ -273,7 +274,7 @@ Manages the execution lifecycle of all schedules.
 3. Fetch new messages from Slack (uses `conversationsHistory` or `conversationsReplies` depending on schedule type)
 4. Filter to only messages newer than `lastMessageTs`
 5. On first fetch (`lastMessageTs` is nil), limit to `initialMessageCount` most recent messages
-6. If no new messages → update `lastRun`, return
+6. If no new messages and `alwaysRun` is false → update `lastRun`, return. If `alwaysRun` is true, proceed using the latest session's messages as context
 7. If all new messages are from owner → create `.skipped` session, advance `lastMessageTs`, return (skip Claude)
 8. Merge `pendingMessages` with new messages for full context
 9. Download images from messages to temp directory

@@ -60,7 +60,13 @@ final class SchedulerEngine: ObservableObject {
         guard schedule.status == .active else { return }
         stopSchedule(schedule.id)
 
-        countdowns[schedule.id] = 0
+        // interval 0 = manual only, no timer
+        guard schedule.intervalSeconds > 0 else {
+            logService.log(.info, scheduleId: schedule.id, message: "Started schedule '\(schedule.name)' in manual mode (no automatic checks)")
+            return
+        }
+
+        countdowns[schedule.id] = TimeInterval(schedule.intervalSeconds)
         logService.log(.info, scheduleId: schedule.id, message: "Started schedule '\(schedule.name)' with interval \(schedule.intervalSeconds)s")
 
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -257,13 +263,21 @@ final class SchedulerEngine: ObservableObject {
                 newMessages = Array(newMessages.prefix(schedule.initialMessageCount))
             }
 
-            guard !newMessages.isEmpty else {
+            if newMessages.isEmpty && !schedule.alwaysRun {
                 logService.log(.verbose, scheduleId: schedule.id, sessionId: sessionId, message: "No new messages")
                 runningSchedules.remove(schedule.id)
                 var updated = scheduleStore.schedule(byId: schedule.id) ?? schedule
                 updated.lastRun = Date()
                 scheduleStore.updateSchedule(updated)
                 return
+            }
+
+            if newMessages.isEmpty && schedule.alwaysRun {
+                logService.log(.info, scheduleId: schedule.id, sessionId: sessionId, message: "No new messages but alwaysRun enabled — proceeding with last session messages")
+                // Use messages from the latest session as context for Claude
+                if let lastSession = schedule.latestSession {
+                    newMessages = lastSession.messages
+                }
             }
 
             // Skip Claude if all new messages are from the owner

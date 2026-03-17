@@ -248,7 +248,7 @@ struct ForcePopupView: View {
                 Label(sched.channelName, systemImage: channelIcon)
                     .font(.caption)
 
-                Label("Every \(formatInterval(sched.intervalSeconds))", systemImage: "clock")
+                Label(sched.intervalSeconds == 0 ? "Manual" : "Every \(formatInterval(sched.intervalSeconds))", systemImage: "clock")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 enum SidebarTab: String, CaseIterable {
     case active = "Active"
+    case manual = "Manual"
     case completed = "Completed"
     case failed = "Failed"
 }
@@ -15,14 +16,16 @@ struct SidebarView: View {
     private var filteredSchedules: [Schedule] {
         scheduleStore.schedules.filter { schedule in
             switch selectedTab {
-            case .active: return schedule.status == .active
+            case .active: return schedule.status == .active && schedule.intervalSeconds > 0
+            case .manual: return schedule.status == .active && schedule.intervalSeconds == 0
             case .completed: return schedule.status == .completed
             case .failed: return schedule.status == .failed
             }
         }
     }
 
-    private var activeCount: Int { scheduleStore.schedules.filter { $0.status == .active }.count }
+    private var activeCount: Int { scheduleStore.schedules.filter { $0.status == .active && $0.intervalSeconds > 0 }.count }
+    private var manualCount: Int { scheduleStore.schedules.filter { $0.status == .active && $0.intervalSeconds == 0 }.count }
     private var completedCount: Int { scheduleStore.schedules.filter { $0.status == .completed }.count }
     private var failedCount: Int { scheduleStore.schedules.filter { $0.status == .failed }.count }
 
@@ -31,6 +34,8 @@ struct SidebarView: View {
             Picker("", selection: $selectedTab) {
                 Text(activeCount > 0 ? "Active (\(activeCount))" : "Active")
                     .tag(SidebarTab.active)
+                Text(manualCount > 0 ? "Manual (\(manualCount))" : "Manual")
+                    .tag(SidebarTab.manual)
                 Text(completedCount > 0 ? "Done (\(completedCount))" : "Done")
                     .tag(SidebarTab.completed)
                 Text(failedCount > 0 ? "Failed (\(failedCount))" : "Failed")

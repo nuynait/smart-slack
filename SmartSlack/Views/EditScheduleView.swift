@@ -15,6 +15,7 @@ struct EditScheduleView: View {
     @State private var prompt: String
     @State private var notificationMode: NotificationMode
     @State private var skipNotificationMode: NotificationMode
+    @State private var alwaysRun: Bool
     @State private var previewDummySessionId: UUID?
 
     init(schedule: Schedule) {
@@ -24,6 +25,7 @@ struct EditScheduleView: View {
         _prompt = State(initialValue: schedule.prompt)
         _notificationMode = State(initialValue: schedule.notificationMode)
         _skipNotificationMode = State(initialValue: schedule.skipNotificationMode)
+        _alwaysRun = State(initialValue: schedule.alwaysRun)
     }
 
     var body: some View {
@@ -97,6 +99,17 @@ struct EditScheduleView: View {
                             Text("Quiet").tag(NotificationMode.quiet)
                         }
                         .pickerStyle(.segmented)
+                    }
+                    .formCard()
+
+                    Toggle(isOn: $alwaysRun) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Always Run Claude")
+                                .font(.headline)
+                            Text("Run Claude analysis every check interval, even when no new messages are found")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .formCard()
 
@@ -194,6 +207,7 @@ struct EditScheduleView: View {
         updated.prompt = prompt
         updated.notificationMode = notificationMode
         updated.skipNotificationMode = skipNotificationMode
+        updated.alwaysRun = alwaysRun
         updated.filterSummary = nil
         updated.memorySummary = nil
         scheduleStore.updateSchedule(updated)
