@@ -62,6 +62,21 @@ struct ForcePopupView: View {
                             .cornerRadius(8)
                     }
 
+                    // Skipped ticks indicator
+                    if schedulerEngine.skippedTicks.contains(schedule.id) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock.badge.exclamationmark.fill")
+                                .foregroundStyle(.orange)
+                            Text("New messages waiting — resolve draft to process")
+                                .font(.caption.bold())
+                                .foregroundStyle(.orange)
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.orange.opacity(0.08))
+                        .cornerRadius(6)
+                    }
+
                     // Auto-send toggle
                     autoSendToggle
 
@@ -271,36 +286,56 @@ struct ForcePopupView: View {
     // MARK: - Auto-send Toggle
 
     private var autoSendToggle: some View {
-        HStack(spacing: 8) {
-            if isAutoSend {
-                Image(systemName: "bolt.fill")
-                    .foregroundStyle(.white)
-                    .font(.caption)
-            }
-            Toggle(isOn: Binding(
-                get: { currentSchedule?.autoSend ?? schedule.autoSend },
-                set: { newValue in
-                    var updated = currentSchedule ?? schedule
-                    updated.autoSend = newValue
-                    scheduleStore.updateSchedule(updated)
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                if isAutoSend {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(.white)
+                        .font(.caption)
                 }
-            )) {
-                Text("Auto Send")
-                    .font(.caption.bold())
-                    .foregroundStyle(isAutoSend ? .white : .secondary)
+                Toggle(isOn: Binding(
+                    get: { currentSchedule?.autoSend ?? schedule.autoSend },
+                    set: { newValue in
+                        var updated = currentSchedule ?? schedule
+                        updated.autoSend = newValue
+                        if newValue { updated.signDrafts = true }
+                        scheduleStore.updateSchedule(updated)
+                    }
+                )) {
+                    Text("Auto Send")
+                        .font(.caption.bold())
+                        .foregroundStyle(isAutoSend ? .white : .secondary)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
             }
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(isAutoSend ? Color.blue : Color.clear)
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isAutoSend ? Color.clear : Color.gray.opacity(0.3), lineWidth: 1)
+            )
+            .animation(.easeInOut(duration: 0.2), value: isAutoSend)
+
+            HStack(spacing: 8) {
+                Toggle(isOn: Binding(
+                    get: { currentSchedule?.signDrafts ?? schedule.signDrafts },
+                    set: { newValue in
+                        var updated = currentSchedule ?? schedule
+                        updated.signDrafts = newValue
+                        scheduleStore.updateSchedule(updated)
+                    }
+                )) {
+                    Text("Signature")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(isAutoSend ? Color.blue : Color.clear)
-        .cornerRadius(6)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isAutoSend ? Color.clear : Color.gray.opacity(0.3), lineWidth: 1)
-        )
-        .animation(.easeInOut(duration: 0.2), value: isAutoSend)
     }
 
     // MARK: - Auto-send Countdown
@@ -648,7 +683,8 @@ struct ForcePopupView: View {
             _ = try await slackService.postMessage(
                 channelId: sched.channelId,
                 text: draft,
-                threadTs: threadTs
+                threadTs: threadTs,
+                appendSignature: sched.signDrafts
             )
 
             var updated = sched
@@ -659,6 +695,7 @@ struct ForcePopupView: View {
             }
             scheduleStore.updateSchedule(updated)
             schedulerEngine.cancelAutoSend(for: schedule.id)
+            schedulerEngine.onDraftResolved(for: schedule.id)
             notificationService.forcePopupScheduleId = nil
         } catch {
             self.error = error.localizedDescription
@@ -676,6 +713,7 @@ struct ForcePopupView: View {
         }
         scheduleStore.updateSchedule(updated)
         schedulerEngine.cancelAutoSend(for: schedule.id)
+        schedulerEngine.onDraftResolved(for: schedule.id)
         notificationService.forcePopupScheduleId = nil
     }
 }

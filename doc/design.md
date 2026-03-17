@@ -118,7 +118,8 @@ Schedule
 ├── skipNotificationMode: NotificationMode  # .macosNotification | .forcePopup | .quiet (default .quiet)
 ├── filterSummary: String?     # One-line summary of the prompt's filter criteria (e.g., "Native development only")
 ├── memorySummary: String?     # One-line summary of what the prompt will memorize (e.g., "Key decisions and action items")
-└── autoSend: Bool             # When true, drafts are auto-sent after 10-second countdown
+├── autoSend: Bool             # When true, drafts are auto-sent after 10-second countdown
+└── signDrafts: Bool           # When true, appends "— drafted with Claude Code" signature to sent messages (default true; enabling autoSend forces this on)
 ```
 
 ### Session
@@ -178,7 +179,7 @@ Thread-safe Slack API client using `URLSession`. All methods are async.
 - `listConversations()` → paginated fetch of all channels/DMs/groups
 - `conversationsHistory(channelId:, oldest:)` → fetch channel messages since timestamp
 - `conversationsReplies(channelId:, ts:, oldest:)` → fetch thread replies
-- `postMessage(channelId:, text:, threadTs:)` → send message (appends draft signature)
+- `postMessage(channelId:, text:, threadTs:, appendSignature:)` → send message (appends "— drafted with Claude Code" signature when `appendSignature` is true, controlled by `schedule.signDrafts`)
 - `conversationsInfo(channelId:)` → get channel details (used for link resolution)
 - `usersInfo(userId:)` → get user profile
 - `downloadFile(url:, to:)` → download private file with auth header
@@ -257,6 +258,7 @@ Manages the execution lifecycle of all schedules.
 - `runningSchedules: Set<UUID>` — currently executing schedules
 - `autoSendCountdowns: [UUID: Int]` — seconds until auto-send per schedule (observed by DraftView + ForcePopupView)
 - `backgroundTasks: [UUID: BackgroundTaskInfo]` — schedules with Claude processing in background (rewrite or active reply)
+- `skippedTicks: Set<UUID>` — schedules that skipped ticks while a draft was pending; triggers catch-up on draft resolution
 
 **Timer system:**
 - Each active schedule gets a 1-second repeating `Timer`
@@ -266,19 +268,27 @@ Manages the execution lifecycle of all schedules.
 
 **Execution pipeline (`executeSchedule`):**
 1. Guard: skip if schedule is already running (prevents concurrent execution)
-2. Fetch new messages from Slack (uses `conversationsHistory` or `conversationsReplies` depending on schedule type)
-3. Filter to only messages newer than `lastMessageTs`
-4. On first fetch (`lastMessageTs` is nil), limit to `initialMessageCount` most recent messages
-5. If no new messages → update `lastRun`, return
-6. If all new messages are from owner → store in `pendingMessages`, advance `lastMessageTs`, return (skip Claude)
-7. Merge `pendingMessages` with new messages for full context
-8. Download images from messages to temp directory
-9. Call `ClaudeService.analyze()` with all messages + image paths
-10. Log the prompt sent and response received
-11. If `result.skipped`: create `Session` with `.skipped` finalAction, nil draftReply, and `skipReason` from draft text; notify via `skipNotificationMode`
-12. Otherwise: create a `Session` with messages, summary, draft, `.pending` finalAction
-13. Update schedule: set `lastRun`, advance `lastMessageTs`, clear `pendingMessages`, append session
-14. On error: mark schedule as `.failed`, stop timer
+2. **Skip-tick guard**: if the latest session has `finalAction == .pending` or a background task is running, mark `skippedTicks` and return immediately — don't fetch messages, don't advance `lastMessageTs`
+3. Fetch new messages from Slack (uses `conversationsHistory` or `conversationsReplies` depending on schedule type)
+4. Filter to only messages newer than `lastMessageTs`
+5. On first fetch (`lastMessageTs` is nil), limit to `initialMessageCount` most recent messages
+6. If no new messages → update `lastRun`, return
+7. If all new messages are from owner → create `.skipped` session, advance `lastMessageTs`, return (skip Claude)
+8. Merge `pendingMessages` with new messages for full context
+9. Download images from messages to temp directory
+10. Call `ClaudeService.analyze()` with all messages + image paths
+11. Log the prompt sent and response received
+12. If `result.skipped`: create `Session` with `.skipped` finalAction, nil draftReply, and `skipReason` from draft text; notify via `skipNotificationMode`
+13. Otherwise: create a `Session` with messages, summary, draft, `.pending` finalAction
+14. Update schedule: set `lastRun`, advance `lastMessageTs`, clear `pendingMessages`, append session
+15. On error: mark schedule as `.failed`, stop timer
+
+**Skip-tick mechanism:**
+- When a draft is pending or a background task is running, ticks are skipped entirely (no Slack API calls, no `lastMessageTs` advancement)
+- `skippedTicks: Set<UUID>` tracks which schedules had skipped ticks
+- When the user resolves a draft (send/ignore/auto-send), `onDraftResolved(for:)` checks if ticks were skipped and immediately triggers a catch-up execution
+- Since `lastMessageTs` was never advanced during skips, the catch-up execution naturally fetches ALL messages since the last successful run — no messages are missed
+- Visual indicator shows "New messages waiting" in ScheduleDetailView and ForcePopupView when ticks are skipped
 
 **Owner message handling:**
 - Messages from the token owner are detected by comparing `message.user` to the stored `ownerUserId`

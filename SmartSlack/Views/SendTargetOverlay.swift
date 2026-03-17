@@ -5,6 +5,7 @@ struct SendTargetOverlay: View {
     let draftText: String
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @EnvironmentObject var schedulerEngine: SchedulerEngine
     @Binding var isPresented: Bool
     @State private var isSending = false
     @State private var error: String?
@@ -186,7 +187,8 @@ struct SendTargetOverlay: View {
             _ = try await slackService.postMessage(
                 channelId: schedule.channelId,
                 text: draftText,
-                threadTs: threadTs
+                threadTs: threadTs,
+                appendSignature: schedule.signDrafts
             )
 
             var updated = schedule
@@ -196,6 +198,7 @@ struct SendTargetOverlay: View {
                 updated.sessions[updated.sessions.count - 1] = lastSession
             }
             scheduleStore.updateSchedule(updated)
+            schedulerEngine.onDraftResolved(for: schedule.id)
             isPresented = false
         } catch {
             self.error = error.localizedDescription

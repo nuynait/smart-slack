@@ -79,6 +79,7 @@ struct RewriteOverlay: View {
                         Button {
                             sentToBackground = true
                             schedulerEngine.backgroundTasks[schedule.id] = BackgroundTaskInfo(scheduleId: schedule.id, type: .rewrite)
+                            appVM.notificationService.forcePopupScheduleId = nil
                             isPresented = false
                         } label: {
                             Label("Run in Background", systemImage: "arrow.down.app")

@@ -84,10 +84,11 @@ actor SlackService {
         return response.messages ?? []
     }
 
-    func postMessage(channelId: String, text: String, threadTs: String? = nil) async throws -> SlackPostMessageResponse {
+    func postMessage(channelId: String, text: String, threadTs: String? = nil, appendSignature: Bool = true) async throws -> SlackPostMessageResponse {
+        let finalText = appendSignature ? text + Constants.draftSignature : text
         var body: [String: String] = [
             "channel": channelId,
-            "text": text + Constants.draftSignature,
+            "text": finalText,
         ]
         if let threadTs {
             body["thread_ts"] = threadTs

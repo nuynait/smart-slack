@@ -5,6 +5,7 @@ struct DraftHistoryView: View {
     let session: Session
     @EnvironmentObject var appVM: AppViewModel
     @EnvironmentObject var scheduleStore: ScheduleStore
+    @EnvironmentObject var schedulerEngine: SchedulerEngine
     @Binding var showSendTarget: Bool
     @Binding var sendTargetDraft: String
     @State private var sendingId: UUID?
@@ -78,7 +79,8 @@ struct DraftHistoryView: View {
             _ = try await slackService.postMessage(
                 channelId: schedule.channelId,
                 text: draft,
-                threadTs: threadTs
+                threadTs: threadTs,
+                appendSignature: schedule.signDrafts
             )
 
             var updated = schedule
@@ -88,6 +90,7 @@ struct DraftHistoryView: View {
                 updated.sessions[updated.sessions.count - 1] = lastSession
             }
             scheduleStore.updateSchedule(updated)
+            schedulerEngine.onDraftResolved(for: schedule.id)
         } catch {
             self.error = error.localizedDescription
         }

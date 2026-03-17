@@ -222,7 +222,8 @@ struct DraftView: View {
             _ = try await slackService.postMessage(
                 channelId: schedule.channelId,
                 text: draft,
-                threadTs: ts
+                threadTs: ts,
+                appendSignature: schedule.signDrafts
             )
 
             var updated = schedule
@@ -232,6 +233,7 @@ struct DraftView: View {
                 updated.sessions[updated.sessions.count - 1] = lastSession
             }
             scheduleStore.updateSchedule(updated)
+            schedulerEngine.onDraftResolved(for: schedule.id)
         } catch {
             self.error = error.localizedDescription
         }
@@ -281,5 +283,6 @@ struct DraftView: View {
             updated.sessions[updated.sessions.count - 1] = lastSession
         }
         scheduleStore.updateSchedule(updated)
+        schedulerEngine.onDraftResolved(for: schedule.id)
     }
 }

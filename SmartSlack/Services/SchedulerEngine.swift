@@ -18,6 +18,7 @@ final class SchedulerEngine: ObservableObject {
     @Published var runningSchedules: Set<UUID> = []
     @Published var autoSendCountdowns: [UUID: Int] = [:]
     @Published var backgroundTasks: [UUID: BackgroundTaskInfo] = [:]
+    private(set) var skippedTicks: Set<UUID> = []
 
     private var timers: [UUID: Timer] = [:]
     private var autoSendTimers: [UUID: Timer] = [:]
@@ -100,6 +101,24 @@ final class SchedulerEngine: ObservableObject {
         }
     }
 
+    // MARK: - Draft Resolution
+
+    /// Call after resolving a draft (send/ignore). If ticks were skipped while the draft was pending,
+    /// immediately triggers a new execution to catch up on missed messages.
+    func onDraftResolved(for scheduleId: UUID) {
+        guard skippedTicks.remove(scheduleId) != nil else { return }
+        guard let schedule = scheduleStore.schedule(byId: scheduleId),
+              schedule.status == .active else { return }
+
+        logService.log(.info, scheduleId: scheduleId, message: "Draft resolved — triggering catch-up execution for skipped ticks")
+        Task {
+            await executeSchedule(schedule)
+            if let updated = scheduleStore.schedule(byId: scheduleId), updated.status == .active {
+                countdowns[scheduleId] = TimeInterval(updated.intervalSeconds)
+            }
+        }
+    }
+
     // MARK: - Auto-send
 
     func startAutoSend(for scheduleId: UUID) {
@@ -143,7 +162,8 @@ final class SchedulerEngine: ObservableObject {
             _ = try await slackService.postMessage(
                 channelId: schedule.channelId,
                 text: draft,
-                threadTs: threadTs
+                threadTs: threadTs,
+                appendSignature: schedule.signDrafts
             )
 
             var updated = schedule
@@ -154,6 +174,7 @@ final class SchedulerEngine: ObservableObject {
             }
             scheduleStore.updateSchedule(updated)
             notificationService?.forcePopupScheduleId = nil
+            onDraftResolved(for: scheduleId)
         } catch {
             logService.log(.error, scheduleId: scheduleId, message: "Auto-send failed: \(error.localizedDescription)")
         }
@@ -190,6 +211,14 @@ final class SchedulerEngine: ObservableObject {
 
         guard !runningSchedules.contains(schedule.id) else {
             logService.log(.warning, scheduleId: schedule.id, message: "Schedule already running, skipping")
+            return
+        }
+
+        // Skip tick if draft is pending or background task is running
+        let currentSchedule = scheduleStore.schedule(byId: schedule.id) ?? schedule
+        if currentSchedule.hasUnresolvedDraft || backgroundTasks[schedule.id] != nil {
+            skippedTicks.insert(schedule.id)
+            logService.log(.info, scheduleId: schedule.id, message: "Skipping tick — draft pending or background task running")
             return
         }
 

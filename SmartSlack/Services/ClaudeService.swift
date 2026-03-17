@@ -227,17 +227,19 @@ enum ClaudeService {
 
     static func analyzePromptMemory(prompt: String) async throws -> String? {
         let claudePrompt = """
-        Analyze the following user prompt for a Slack monitoring tool. Determine if it contains any instructions to memorize, remember, or track information across sessions.
+        Analyze the following user prompt for a Slack monitoring tool. Determine if it contains ANY instructions — explicit or implicit — to remember, memorize, store, track, or retain ANY kind of information across sessions.
 
-        Examples of memory instructions:
-        - "Remember key decisions made in discussions"
-        - "Track action items and who is responsible"
-        - "Memorize any deadlines or dates mentioned"
-        - "Keep track of recurring topics"
+        This includes but is not limited to:
+        - Tracking things from conversations (decisions, action items, topics, deadlines)
+        - Remembering static values (API keys, credentials, names, preferences, configurations)
+        - References to a "memory file" or persistent storage
+        - Any phrasing that implies information should persist between runs
+
+        Be inclusive — if there is any hint that something should be remembered or stored, treat it as a memory instruction.
 
         If the prompt contains memory instructions, respond with a SHORT one-line plaintext of what will be memorized.
 
-        If the prompt does NOT contain any memory/remember/track instructions, respond with exactly "NONE".
+        If the prompt truly does NOT contain any memory/remember/track/store instructions, respond with exactly "NONE".
 
         Prompt:
         \(prompt)
