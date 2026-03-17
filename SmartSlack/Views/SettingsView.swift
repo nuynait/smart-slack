@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject var promptStore: PromptStore
     @EnvironmentObject var keyboardNav: KeyboardNavigationState
     @State private var showPromptManager = false
+    @AppStorage("showNotificationModeInSidebar") private var showNotificationMode = false
 
     var body: some View {
         ScrollView {
@@ -74,6 +75,18 @@ struct SettingsView: View {
                         showPromptManager = true
                     }
                     .buttonStyle(.secondary)
+                }
+                .formCard()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Display")
+                        .font(.headline)
+
+                    Toggle("Show notification mode in sidebar", isOn: $showNotificationMode)
+
+                    Text("Show an icon next to each schedule indicating its notification mode (Notification, Force Popup, or Quiet).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .formCard()
 

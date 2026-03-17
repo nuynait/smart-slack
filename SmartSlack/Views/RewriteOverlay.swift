@@ -56,6 +56,7 @@ struct RewriteOverlay: View {
                     .font(.body)
                     .frame(minHeight: 80, maxHeight: 120)
                     .focused($isPromptFocused)
+                    .disabled(isRewriting)
 
                 if let error {
                     Text(error)
@@ -67,7 +68,10 @@ struct RewriteOverlay: View {
                     Button {
                         isPresented = false
                     } label: {
-                        Text("Cancel")
+                        HStack(spacing: 4) {
+                            Text("Cancel")
+                            KeyboardHintView(key: "Esc")
+                        }
                     }
                     .buttonStyle(.secondary)
                     .disabled(isRewriting)
@@ -82,9 +86,13 @@ struct RewriteOverlay: View {
                             appVM.notificationService.forcePopupScheduleId = nil
                             isPresented = false
                         } label: {
-                            Label("Run in Background", systemImage: "arrow.down.app")
+                            HStack(spacing: 4) {
+                                Label("Run in Background", systemImage: "arrow.down.app")
+                                KeyboardHintView(key: "b")
+                            }
                         }
                         .buttonStyle(.secondary)
+                        .keyboardShortcut("b", modifiers: [])
                     }
 
                     Button {
@@ -96,7 +104,10 @@ struct RewriteOverlay: View {
                                 Text("Rewriting...")
                             }
                         } else {
-                            Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
+                            HStack(spacing: 4) {
+                                Label("Rewrite", systemImage: "arrow.triangle.2.circlepath")
+                                KeyboardHintView(key: "⌘↩")
+                            }
                         }
                     }
                     .buttonStyle(.primary)

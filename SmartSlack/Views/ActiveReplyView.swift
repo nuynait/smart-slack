@@ -44,6 +44,7 @@ struct ActiveReplyView: View {
                     .font(.body)
                     .frame(minHeight: 80, maxHeight: 120)
                     .focused($isPromptFocused)
+                    .disabled(isGenerating)
 
                 if let error {
                     Text(error)
@@ -55,7 +56,10 @@ struct ActiveReplyView: View {
                     Button {
                         isPresented = false
                     } label: {
-                        Text("Cancel")
+                        HStack(spacing: 4) {
+                            Text("Cancel")
+                            KeyboardHintView(key: "Esc")
+                        }
                     }
                     .buttonStyle(.secondary)
                     .disabled(isGenerating)
@@ -70,9 +74,13 @@ struct ActiveReplyView: View {
                             appVM.notificationService.forcePopupScheduleId = nil
                             isPresented = false
                         } label: {
-                            Label("Run in Background", systemImage: "arrow.down.app")
+                            HStack(spacing: 4) {
+                                Label("Run in Background", systemImage: "arrow.down.app")
+                                KeyboardHintView(key: "b")
+                            }
                         }
                         .buttonStyle(.secondary)
+                        .keyboardShortcut("b", modifiers: [])
                     }
 
                     Button {
@@ -84,7 +92,10 @@ struct ActiveReplyView: View {
                                 Text("Generating...")
                             }
                         } else {
-                            Label("Draft Reply", systemImage: "paperplane")
+                            HStack(spacing: 4) {
+                                Label("Draft Reply", systemImage: "paperplane")
+                                KeyboardHintView(key: "⌘↩")
+                            }
                         }
                     }
                     .buttonStyle(.primary)

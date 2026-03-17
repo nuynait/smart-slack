@@ -3,6 +3,7 @@ import SwiftUI
 struct ScheduleRowView: View {
     let schedule: Schedule
     @EnvironmentObject var schedulerEngine: SchedulerEngine
+    @AppStorage("showNotificationModeInSidebar") private var showNotificationMode = false
 
     private var countdown: TimeInterval? {
         schedulerEngine.countdowns[schedule.id]
@@ -31,6 +32,13 @@ struct ScheduleRowView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+            }
+
+            if showNotificationMode {
+                Image(systemName: notificationIcon)
+                    .foregroundStyle(notificationColor)
+                    .font(.caption2)
+                    .help(notificationLabel)
             }
 
             Spacer()
@@ -64,6 +72,30 @@ struct ScheduleRowView: View {
         case .active: return .statusActive
         case .completed: return .statusCompleted
         case .failed: return .statusFailed
+        }
+    }
+
+    private var notificationIcon: String {
+        switch schedule.notificationMode {
+        case .macosNotification: return "bell.fill"
+        case .forcePopup: return "exclamationmark.bubble.fill"
+        case .quiet: return "bell.slash.fill"
+        }
+    }
+
+    private var notificationColor: Color {
+        switch schedule.notificationMode {
+        case .macosNotification: return .blue
+        case .forcePopup: return .orange
+        case .quiet: return .secondary
+        }
+    }
+
+    private var notificationLabel: String {
+        switch schedule.notificationMode {
+        case .macosNotification: return "Notification"
+        case .forcePopup: return "Force Popup"
+        case .quiet: return "Quiet"
         }
     }
 

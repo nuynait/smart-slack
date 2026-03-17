@@ -47,6 +47,14 @@ struct KeyboardCheatsheetView: View {
                     ]
                 }
 
+                twoColumnSection("Rewrite / Edit / Active Reply") {
+                    [
+                        ("Submit", ["⌘", "↩"]),
+                        ("Background", ["b"]),
+                        ("Cancel", ["Esc"]),
+                    ]
+                }
+
                 twoColumnSection("Prompt Picker") {
                     [
                         ("Navigate list", ["j", "k"]),

@@ -75,7 +75,7 @@ struct ScheduleDetailView: View {
                     SendTargetOverlay(schedule: schedule, draftText: sendTargetDraft, isPresented: $showSendTarget)
                 }
                 if showImagePreview {
-                    ImagePreviewOverlay(images: allConversationImages, slackService: appVM.slackService, selectedIndex: $imagePreviewIndex, isPresented: $showImagePreview)
+                    ImagePreviewOverlay(images: buildConversationMessages().flatMap(\.imageFiles), slackService: appVM.slackService, selectedIndex: $imagePreviewIndex, isPresented: $showImagePreview)
                 }
             }
     }
@@ -171,7 +171,7 @@ struct ScheduleDetailView: View {
     }
 
     private func resolveAllUserNames() {
-        let messages = conversationMessages
+        let messages = buildConversationMessages()
         var allUserIds = messages.compactMap(\.user)
         // Also resolve user IDs mentioned in message text (<@USERID>)
         let mentionPattern = /<@(U[A-Z0-9]+)>/
@@ -371,17 +371,7 @@ struct ScheduleDetailView: View {
         return Date(timeIntervalSince1970: interval)
     }
 
-    private var allConversationImages: [SlackFile] {
-        conversationMessages.flatMap(\.imageFiles)
-    }
-
-    private var latestMessageIds: Set<String> {
-        guard let latest = schedule.latestSession else { return [] }
-        return Set(latest.messages.compactMap(\.ts))
-    }
-
-    private var conversationMessages: [SlackMessage] {
-        // Collect messages from all sessions + pending, deduplicate by ts, sort newest first
+    private func buildConversationMessages() -> [SlackMessage] {
         var seen = Set<String>()
         var all: [SlackMessage] = []
         for session in schedule.sessions {
@@ -401,6 +391,23 @@ struct ScheduleDetailView: View {
             }
         }
         return all.sorted { ($0.ts ?? "") > ($1.ts ?? "") }
+    }
+
+    private func buildLatestMessageIds() -> Set<String> {
+        guard let latest = schedule.latestSession else { return [] }
+        return Set(latest.messages.compactMap(\.ts))
+    }
+
+    private func buildImageIndexMap(from messages: [SlackMessage]) -> [String: Int] {
+        var map: [String: Int] = [:]
+        var index = 0
+        for msg in messages {
+            for file in msg.imageFiles {
+                map[file.id] = index
+                index += 1
+            }
+        }
+        return map
     }
 
     private func sessionSection(_ session: Session) -> some View {
@@ -480,17 +487,19 @@ struct ScheduleDetailView: View {
             }
 
             // Conversation (newest on top)
-            let messages = conversationMessages
+            let messages = buildConversationMessages()
+            let latestIds = buildLatestMessageIds()
+            let imageIndexMap = buildImageIndexMap(from: messages)
             if !messages.isEmpty {
                 sectionHeader("Conversation", icon: "bubble.left.and.bubble.right")
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                        let isLatest = latestMessageIds.contains(message.ts ?? "")
+                        let isLatest = latestIds.contains(message.ts ?? "")
                         let isOwner = message.user == appVM.slackUserId
-                        let nextIsLatest = index + 1 < messages.count ? latestMessageIds.contains(messages[index + 1].ts ?? "") : false
+                        let nextIsLatest = index + 1 < messages.count ? latestIds.contains(messages[index + 1].ts ?? "") : false
                         let isLastNew = isLatest && !nextIsLatest
 
-                        messageRow(message: message, isLatest: isLatest, isOwner: isOwner)
+                        messageRow(message: message, isLatest: isLatest, isOwner: isOwner, imageIndexMap: imageIndexMap)
 
                         if isLastNew {
                             olderDivider
@@ -553,7 +562,7 @@ struct ScheduleDetailView: View {
         }
     }
 
-    private func messageRow(message: SlackMessage, isLatest: Bool, isOwner: Bool) -> some View {
+    private func messageRow(message: SlackMessage, isLatest: Bool, isOwner: Bool, imageIndexMap: [String: Int] = [:]) -> some View {
         let userId = message.user ?? "?"
         let nameColor: Color = isOwner ? .primary : userColorStore.color(for: userId)
 
@@ -583,7 +592,7 @@ struct ScheduleDetailView: View {
                     .textSelection(.enabled)
 
                 if !message.imageFiles.isEmpty {
-                    messageImages(message.imageFiles)
+                    messageImages(message.imageFiles, imageIndexMap: imageIndexMap)
                 }
 
                 HStack(spacing: 8) {
@@ -620,12 +629,11 @@ struct ScheduleDetailView: View {
         )
     }
 
-    private func messageImages(_ files: [SlackFile]) -> some View {
-        let allImages = allConversationImages
-        return HStack(spacing: 6) {
+    private func messageImages(_ files: [SlackFile], imageIndexMap: [String: Int]) -> some View {
+        HStack(spacing: 6) {
             ForEach(files) { file in
                 SlackImageView(file: file, slackService: appVM.slackService, onTap: {
-                    if let idx = allImages.firstIndex(where: { $0.id == file.id }) {
+                    if let idx = imageIndexMap[file.id] {
                         imagePreviewIndex = idx
                         showImagePreview = true
                     }

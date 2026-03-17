@@ -55,6 +55,7 @@ struct EditSendOverlay: View {
                     .font(.body)
                     .frame(minHeight: 120, maxHeight: 200)
                     .focused($isTextFocused)
+                    .disabled(isSending)
 
                 if let error {
                     Text(error)
@@ -66,7 +67,10 @@ struct EditSendOverlay: View {
                     Button {
                         isPresented = false
                     } label: {
-                        Text("Cancel")
+                        HStack(spacing: 4) {
+                            Text("Cancel")
+                            KeyboardHintView(key: "Esc")
+                        }
                     }
                     .buttonStyle(.secondary)
                     .disabled(isSending)
@@ -83,9 +87,15 @@ struct EditSendOverlay: View {
                                 Text("Sending...")
                             }
                         } else if schedule.type != .thread {
-                            Label("Send to...", systemImage: "paperplane.fill")
+                            HStack(spacing: 4) {
+                                Label("Send to...", systemImage: "paperplane.fill")
+                                KeyboardHintView(key: "⌘↩")
+                            }
                         } else {
-                            Label("Send", systemImage: "paperplane.fill")
+                            HStack(spacing: 4) {
+                                Label("Send", systemImage: "paperplane.fill")
+                                KeyboardHintView(key: "⌘↩")
+                            }
                         }
                     }
                     .buttonStyle(.primary)

@@ -121,16 +121,17 @@ struct ForcePopupView: View {
                     // Conversation (color-coded)
                     let messages = conversationMessages(from: activeSchedule)
                     let latestIds = latestMessageIds(from: activeSchedule)
+                    let imageIndexMap = buildImageIndexMap(from: messages)
                     if !messages.isEmpty {
                         sectionHeader("Conversation", icon: "bubble.left.and.bubble.right")
-                        VStack(alignment: .leading, spacing: 0) {
+                        LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                                 let isLatest = latestIds.contains(message.ts ?? "")
                                 let isOwner = message.user == appVM.slackUserId
                                 let nextIsLatest = index + 1 < messages.count ? latestIds.contains(messages[index + 1].ts ?? "") : false
                                 let isLastNew = isLatest && !nextIsLatest
 
-                                messageRow(message: message, isLatest: isLatest, isOwner: isOwner)
+                                messageRow(message: message, isLatest: isLatest, isOwner: isOwner, imageIndexMap: imageIndexMap)
 
                                 if isLastNew {
                                     olderDivider
@@ -163,8 +164,7 @@ struct ForcePopupView: View {
                 RewriteOverlay(schedule: currentSchedule ?? schedule, session: activeSession, isPresented: $showRewrite)
             }
             if showImagePreview {
-                let images = allConversationImages(from: currentSchedule ?? schedule)
-                ImagePreviewOverlay(images: images, slackService: appVM.slackService, selectedIndex: $imagePreviewIndex, isPresented: $showImagePreview)
+                ImagePreviewOverlay(images: conversationMessages(from: currentSchedule ?? schedule).flatMap(\.imageFiles), slackService: appVM.slackService, selectedIndex: $imagePreviewIndex, isPresented: $showImagePreview)
             }
         }
         .onChange(of: showSendTarget) { _, showing in
@@ -491,8 +491,16 @@ struct ForcePopupView: View {
         return Set(latest.messages.compactMap(\.ts))
     }
 
-    private func allConversationImages(from schedule: Schedule) -> [SlackFile] {
-        conversationMessages(from: schedule).flatMap(\.imageFiles)
+    private func buildImageIndexMap(from messages: [SlackMessage]) -> [String: Int] {
+        var map: [String: Int] = [:]
+        var index = 0
+        for msg in messages {
+            for file in msg.imageFiles {
+                map[file.id] = index
+                index += 1
+            }
+        }
+        return map
     }
 
     private static let messageTimestampFormatter: DateFormatter = {
@@ -508,7 +516,7 @@ struct ForcePopupView: View {
         return Date(timeIntervalSince1970: interval)
     }
 
-    private func messageRow(message: SlackMessage, isLatest: Bool, isOwner: Bool) -> some View {
+    private func messageRow(message: SlackMessage, isLatest: Bool, isOwner: Bool, imageIndexMap: [String: Int] = [:]) -> some View {
         let userId = message.user ?? "?"
         let nameColor: Color = isOwner ? .primary : userColorStore.color(for: userId)
 
@@ -538,7 +546,7 @@ struct ForcePopupView: View {
                     .textSelection(.enabled)
 
                 if !message.imageFiles.isEmpty {
-                    messageImages(message.imageFiles, from: currentSchedule ?? schedule)
+                    messageImages(message.imageFiles, imageIndexMap: imageIndexMap)
                 }
 
                 if let date = slackTsToDate(message.ts) {
@@ -558,12 +566,11 @@ struct ForcePopupView: View {
         )
     }
 
-    private func messageImages(_ files: [SlackFile], from schedule: Schedule) -> some View {
-        let allImages = allConversationImages(from: schedule)
-        return HStack(spacing: 6) {
+    private func messageImages(_ files: [SlackFile], imageIndexMap: [String: Int]) -> some View {
+        HStack(spacing: 6) {
             ForEach(files) { file in
                 SlackImageView(file: file, slackService: appVM.slackService, onTap: {
-                    if let idx = allImages.firstIndex(where: { $0.id == file.id }) {
+                    if let idx = imageIndexMap[file.id] {
                         imagePreviewIndex = idx
                         showImagePreview = true
                     }
