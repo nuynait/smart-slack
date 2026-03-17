@@ -5,7 +5,7 @@ import AppKit
 @MainActor
 final class NotificationService: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     @Published var permissionGranted = false
-    @Published var forcePopupScheduleId: UUID?
+    @Published var popupQueue: [UUID] = []
     @Published var selectedScheduleIdFromNotification: UUID?
 
     override init() {
@@ -36,6 +36,22 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         }
     }
 
+    // MARK: - Popup Queue
+
+    func enqueuePopup(_ id: UUID) {
+        guard !popupQueue.contains(id) else { return }
+        popupQueue.append(id)
+    }
+
+    func dequeueCurrentPopup() {
+        guard !popupQueue.isEmpty else { return }
+        popupQueue.removeFirst()
+    }
+
+    func dequeuePopup(_ id: UUID) {
+        popupQueue.removeAll { $0 == id }
+    }
+
     // MARK: - Notify
 
     func notifySessionReady(schedule: Schedule, session: Session) {
@@ -44,7 +60,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
             sendMacOSNotification(schedule: schedule, session: session)
         case .forcePopup:
             NSSound(named: "Glass")?.play()
-            forcePopupScheduleId = schedule.id
+            enqueuePopup(schedule.id)
         case .quiet:
             break
         }
@@ -56,7 +72,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
             sendSkippedMacOSNotification(schedule: schedule, session: session)
         case .forcePopup:
             NSSound(named: "Glass")?.play()
-            forcePopupScheduleId = schedule.id
+            enqueuePopup(schedule.id)
         case .quiet:
             break
         }

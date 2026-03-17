@@ -380,7 +380,7 @@ Manages notification delivery based on each schedule's `notificationMode`.
 
 **Three modes:**
 - **macosNotification** — Sends a `UNNotificationRequest` with schedule name as title and summary preview as body. Clicking the notification navigates to the schedule via `selectedScheduleIdFromNotification`.
-- **forcePopup** — Sets `forcePopupScheduleId` which AppDelegate observes to present an always-on-top `NSPanel`. The panel cannot be closed via the close button (only via Send or Ignore). Plays a "Glass" system sound on appearance.
+- **forcePopup** — Enqueues the schedule ID into `NotificationService.popupQueue`. AppDelegate observes the queue's first element via Combine and presents an always-on-top `NSPanel`. When multiple schedules trigger popups before the user resolves them, they queue up and are shown one at a time. A queue indicator bar appears at the top of the popup when more than one item is queued. The panel cannot be closed via the close button (only via Send or Ignore). Plays a "Glass" system sound on appearance.
 - **quiet** — No notification. Drafts are only visible via the sidebar indicator.
 
 **Permission management:**
@@ -544,7 +544,7 @@ Opens in a separate `NSWindow`. Features:
 
 History, Log Viewer, and Settings open in separate `NSWindow` instances (created programmatically in MainView) rather than sheets or navigation destinations. Environment objects must be explicitly injected when creating these windows (they don't inherit from the main window hierarchy).
 
-The Force Popup uses an `NSPanel` with `level = .floating` managed by AppDelegate. It observes `notificationService.forcePopupScheduleId` via Combine and cannot be dismissed via the close button (`windowShouldClose` returns `false`). Only Send or Ignore actions dismiss it by setting `forcePopupScheduleId = nil`.
+The Force Popup uses an `NSPanel` with `level = .floating` managed by AppDelegate. It observes `notificationService.popupQueue.first` via Combine (mapped + deduplicated) and cannot be dismissed via the close button (`windowShouldClose` returns `false`). Popups are queued in `NotificationService.popupQueue` — resolving the current popup (Send/Ignore) dequeues it and automatically shows the next one if the queue is non-empty. A queue indicator bar is shown in ForcePopupView when multiple items are queued.
 
 ### Keyboard Navigation
 
@@ -665,7 +665,7 @@ New session created with .pending finalAction + draftReply
        │    ├─ Thread schedule → postMessage(threadTs: schedule.threadTs)
        │    └─ Non-thread schedule → postMessage(threadTs: nil) [sends to channel]
        │    → finalAction = .sent, sentMessage = draft
-       │    → Dismisses force popup if visible (notificationService.forcePopupScheduleId = nil)
+       │    → Dequeues current force popup if visible (notificationService.dequeueCurrentPopup())
        │
        ├─ User toggles autoSend OFF → SchedulerEngine.cancelAutoSend(for:)
        │    → Cancel timer, remove countdown entry, show normal action buttons

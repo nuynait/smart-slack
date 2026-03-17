@@ -38,6 +38,9 @@ struct ForcePopupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if notificationService.popupQueue.count > 1 {
+                queueIndicator
+            }
             headerSection
             Divider()
 
@@ -190,13 +193,13 @@ struct ForcePopupView: View {
         .onChange(of: showSendTarget) { _, showing in
             if !showing, let sched = currentSchedule,
                sched.latestSession?.finalAction == .sent {
-                notificationService.forcePopupScheduleId = nil
+                notificationService.dequeueCurrentPopup()
             }
         }
         .onChange(of: showEditSend) { _, showing in
             if !showing, let sched = currentSchedule,
                sched.latestSession?.finalAction == .sent {
-                notificationService.forcePopupScheduleId = nil
+                notificationService.dequeueCurrentPopup()
             }
         }
         .onChange(of: isAutoSend) { _, autoSend in
@@ -307,6 +310,25 @@ struct ForcePopupView: View {
         }
         .padding()
         .background(.quaternary)
+    }
+
+    // MARK: - Queue Indicator
+
+    private var queueIndicator: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "tray.full.fill")
+                .foregroundStyle(.orange)
+            Text("\(notificationService.popupQueue.count) popups queued")
+                .font(.caption.bold())
+                .foregroundStyle(.orange)
+            Spacer()
+            Text("1 of \(notificationService.popupQueue.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.orange.opacity(0.08))
     }
 
     // MARK: - Auto-send Toggle
@@ -766,7 +788,7 @@ struct ForcePopupView: View {
             scheduleStore.updateSchedule(updated)
             schedulerEngine.cancelAutoSend(for: schedule.id)
             schedulerEngine.onDraftResolved(for: schedule.id)
-            notificationService.forcePopupScheduleId = nil
+            notificationService.dequeueCurrentPopup()
         } catch {
             self.error = error.localizedDescription
         }
@@ -784,6 +806,6 @@ struct ForcePopupView: View {
         scheduleStore.updateSchedule(updated)
         schedulerEngine.cancelAutoSend(for: schedule.id)
         schedulerEngine.onDraftResolved(for: schedule.id)
-        notificationService.forcePopupScheduleId = nil
+        notificationService.dequeueCurrentPopup()
     }
 }

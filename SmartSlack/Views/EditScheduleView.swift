@@ -141,14 +141,14 @@ struct EditScheduleView: View {
             .padding()
         }
         .frame(width: 500, height: 550)
-        .onChange(of: notificationService.forcePopupScheduleId) { _, newValue in
-            if newValue == nil && previewDummySessionId != nil {
+        .onChange(of: notificationService.popupQueue) { _, queue in
+            if !queue.contains(schedule.id) && previewDummySessionId != nil {
                 cleanupPreviewSession()
             }
         }
         .onDisappear {
             if previewDummySessionId != nil {
-                notificationService.forcePopupScheduleId = nil
+                notificationService.dequeuePopup(schedule.id)
                 cleanupPreviewSession()
             }
         }
@@ -188,7 +188,7 @@ struct EditScheduleView: View {
         updated.sessions.append(dummySession)
         scheduleStore.updateSchedule(updated)
 
-        notificationService.forcePopupScheduleId = schedule.id
+        notificationService.enqueuePopup(schedule.id)
     }
 
     private func cleanupPreviewSession() {

@@ -179,7 +179,7 @@ final class SchedulerEngine: ObservableObject {
                 updated.sessions[updated.sessions.count - 1] = lastSession
             }
             scheduleStore.updateSchedule(updated)
-            notificationService?.forcePopupScheduleId = nil
+            notificationService?.dequeueCurrentPopup()
             onDraftResolved(for: scheduleId)
         } catch {
             logService.log(.error, scheduleId: scheduleId, message: "Auto-send failed: \(error.localizedDescription)")

@@ -71,7 +71,7 @@ struct ActiveReplyView: View {
                         Button {
                             sentToBackground = true
                             schedulerEngine.backgroundTasks[schedule.id] = BackgroundTaskInfo(scheduleId: schedule.id, type: .activeReply)
-                            appVM.notificationService.forcePopupScheduleId = nil
+                            appVM.notificationService.dequeueCurrentPopup()
                             isPresented = false
                         } label: {
                             HStack(spacing: 4) {

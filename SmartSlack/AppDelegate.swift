@@ -34,9 +34,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Watch for force popup requests
-        appVM.notificationService.$forcePopupScheduleId
+        // Watch for force popup requests (react when the front of the queue changes)
+        appVM.notificationService.$popupQueue
             .receive(on: RunLoop.main)
+            .map { $0.first }
+            .removeDuplicates()
             .sink { [weak self] scheduleId in
                 if let scheduleId {
                     self?.showForcePopup(scheduleId: scheduleId)

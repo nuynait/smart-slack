@@ -83,7 +83,7 @@ struct RewriteOverlay: View {
                         Button {
                             sentToBackground = true
                             schedulerEngine.backgroundTasks[schedule.id] = BackgroundTaskInfo(scheduleId: schedule.id, type: .rewrite)
-                            appVM.notificationService.forcePopupScheduleId = nil
+                            appVM.notificationService.dequeueCurrentPopup()
                             isPresented = false
                         } label: {
                             HStack(spacing: 4) {
