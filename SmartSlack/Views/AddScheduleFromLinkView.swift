@@ -260,7 +260,8 @@ struct AddScheduleFromLinkView: View {
             }
 
             if name.isEmpty {
-                name = channelName
+                let prefix = (type == .channel || type == .thread) ? "#" : ""
+                name = "\(prefix)\(channelName)"
             }
         } catch {
             self.error = error.localizedDescription

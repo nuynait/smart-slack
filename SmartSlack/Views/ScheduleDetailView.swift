@@ -83,6 +83,22 @@ struct ScheduleDetailView: View {
                     ImagePreviewOverlay(images: buildConversationMessages().flatMap(\.imageFiles), slackService: appVM.slackService, selectedIndex: $imagePreviewIndex, isPresented: $showImagePreview)
                 }
             }
+            .onKeyPress(.return) {
+                guard let session = schedule.latestSession,
+                      session.finalAction == .pending,
+                      session.draftReply != nil,
+                      !showEditSend, !showRewrite, !showSendTarget, !showActiveReply else {
+                    return .ignored
+                }
+                let draft = session.draftReply ?? ""
+                if schedule.type != .thread {
+                    sendTargetDraft = draft
+                    showSendTarget = true
+                } else {
+                    Task { await sendDraft(draft: draft) }
+                }
+                return .handled
+            }
     }
 
     private var contentView: some View {
@@ -187,6 +203,27 @@ struct ScheduleDetailView: View {
             }
         }
         appVM.resolveUserNames(ids: allUserIds)
+    }
+
+    private func sendDraft(draft: String) async {
+        guard let slackService = appVM.slackService else { return }
+        let threadTs = schedule.type == .thread ? schedule.threadTs : nil
+        do {
+            _ = try await slackService.postMessage(
+                channelId: schedule.channelId,
+                text: draft,
+                threadTs: threadTs,
+                appendSignature: schedule.signDrafts
+            )
+            var updated = schedule
+            if var lastSession = updated.sessions.last {
+                lastSession.finalAction = .sent
+                lastSession.sentMessage = draft
+                updated.sessions[updated.sessions.count - 1] = lastSession
+            }
+            scheduleStore.updateSchedule(updated)
+            schedulerEngine.onDraftResolved(for: schedule.id)
+        } catch {}
     }
 
     // MARK: - Header

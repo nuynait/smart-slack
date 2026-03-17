@@ -169,9 +169,15 @@ struct DraftView: View {
                 if isSending {
                     ProgressView().controlSize(.small)
                 } else if schedule.type != .thread {
-                    Label("Send to...", systemImage: "paperplane.fill")
+                    HStack(spacing: 4) {
+                        Label("Send to...", systemImage: "paperplane.fill")
+                        KeyboardHintView(key: "↩")
+                    }
                 } else {
-                    Label("Send", systemImage: "paperplane.fill")
+                    HStack(spacing: 4) {
+                        Label("Send", systemImage: "paperplane.fill")
+                        KeyboardHintView(key: "↩")
+                    }
                 }
             }
             .buttonStyle(.primary)

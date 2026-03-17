@@ -217,15 +217,21 @@ struct ForcePopupView: View {
             }
             resolveUserNames()
         }
-        // Enter key sends draft (when not in text field)
+        // Enter key opens send-to picker (or sends directly for threads)
         .onKeyPress(.return) {
             let activeSession = currentSession ?? session
+            let sched = currentSchedule ?? schedule
             guard activeSession.finalAction == .pending,
-                  activeSession.draftReply != nil,
+                  let draft = activeSession.draftReply,
                   !isSending, !showEditSend, !showRewrite, !showSendTarget else {
                 return .ignored
             }
-            Task { await sendAndDismiss() }
+            if sched.type != .thread {
+                sendTargetDraft = draft
+                showSendTarget = true
+            } else {
+                Task { await sendAndDismiss() }
+            }
             return .handled
         }
         .onKeyPress(characters: .init(charactersIn: "eri"), action: handleKeyPress)
@@ -424,9 +430,15 @@ struct ForcePopupView: View {
                 } else {
                     let sched = currentSchedule ?? schedule
                     if sched.type != .thread {
-                        Label("Send to...", systemImage: "paperplane.fill")
+                        HStack(spacing: 4) {
+                            Label("Send to...", systemImage: "paperplane.fill")
+                            KeyboardHintView(key: "↩")
+                        }
                     } else {
-                        Label("Send", systemImage: "paperplane.fill")
+                        HStack(spacing: 4) {
+                            Label("Send", systemImage: "paperplane.fill")
+                            KeyboardHintView(key: "↩")
+                        }
                     }
                 }
             }

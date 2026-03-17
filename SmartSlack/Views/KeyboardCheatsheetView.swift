@@ -40,6 +40,7 @@ struct KeyboardCheatsheetView: View {
 
                 twoColumnSection("Draft") {
                     [
+                        ("Send / Send to", ["↩"]),
                         ("Edit & Send", ["e"]),
                         ("Rewrite", ["r"]),
                         ("Active reply", ["a"]),

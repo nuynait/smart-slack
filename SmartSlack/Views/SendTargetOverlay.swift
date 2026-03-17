@@ -83,6 +83,7 @@ struct SendTargetOverlay: View {
                         Image(systemName: channelIcon)
                         Text("Send to \(schedule.channelName)")
                             .fontWeight(.medium)
+                        KeyboardHintView(key: "↩")
                         Spacer()
                         if isSending {
                             ProgressView().controlSize(.small)
@@ -128,6 +129,11 @@ struct SendTargetOverlay: View {
             .background(Color(nsColor: .windowBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .shadow(color: .black.opacity(0.4), radius: 20, y: 5)
+            .onKeyPress(.return) {
+                guard !isSending else { return .ignored }
+                Task { await send(threadTs: nil) }
+                return .handled
+            }
         }
     }
 
