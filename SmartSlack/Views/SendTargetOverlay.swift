@@ -9,6 +9,7 @@ struct SendTargetOverlay: View {
     @Binding var isPresented: Bool
     @State private var isSending = false
     @State private var error: String?
+    @FocusState private var isFocused: Bool
 
     private var recentMessages: [SlackMessage] {
         var seen = Set<String>()
@@ -129,6 +130,9 @@ struct SendTargetOverlay: View {
             .background(Color(nsColor: .windowBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .shadow(color: .black.opacity(0.4), radius: 20, y: 5)
+            .focusable()
+            .focused($isFocused)
+            .onAppear { isFocused = true }
             .onKeyPress(.return) {
                 guard !isSending else { return .ignored }
                 Task { await send(threadTs: nil) }
