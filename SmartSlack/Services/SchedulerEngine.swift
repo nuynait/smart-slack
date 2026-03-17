@@ -86,6 +86,10 @@ final class SchedulerEngine: ObservableObject {
 
     func triggerManually(_ id: UUID) {
         guard let schedule = scheduleStore.schedule(byId: id) else { return }
+        guard !runningSchedules.contains(id) else {
+            logService.log(.warning, scheduleId: id, message: "Manual trigger skipped — schedule already running")
+            return
+        }
         countdowns[id] = 0
         Task {
             await executeSchedule(schedule)
@@ -190,6 +194,10 @@ final class SchedulerEngine: ObservableObject {
 
     private func tick(_ id: UUID) {
         guard var remaining = countdowns[id] else { return }
+
+        // Freeze countdown while schedule is executing
+        if runningSchedules.contains(id) { return }
+
         remaining -= 1
 
         if remaining <= 0 {
