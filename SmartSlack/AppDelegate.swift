@@ -48,6 +48,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         updateButton()
         installKeyboardMonitor()
+
+        // Ensure the main window is visible on launch (SwiftUI may delay creation)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            if self?.findMainWindow()?.isVisible != true {
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                self?.findMainWindow()?.makeKeyAndOrderFront(nil)
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -55,7 +63,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     @objc private func statusItemClicked() {
-        if let window = NSApplication.shared.windows.first(where: { $0.title == "SmartSlack" || $0.isKeyWindow }) {
+        // Find the main app window (exclude panels, popups, and other utility windows)
+        if let window = findMainWindow() {
             if window.isVisible {
                 window.orderOut(nil)
             } else {
@@ -63,8 +72,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }
         } else {
+            // Window not yet created by SwiftUI — activate app to trigger window creation
             NSApplication.shared.activate(ignoringOtherApps: true)
+            // SwiftUI may create the window asynchronously; try again after a brief delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                if let window = self?.findMainWindow() {
+                    window.makeKeyAndOrderFront(nil)
+                }
+            }
         }
+    }
+
+    private func findMainWindow() -> NSWindow? {
+        NSApplication.shared.windows.first(where: {
+            $0.title == "SmartSlack" && !($0 is NSPanel)
+        })
     }
 
     // MARK: - Keyboard Navigation
