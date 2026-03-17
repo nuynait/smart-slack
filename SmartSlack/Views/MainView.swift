@@ -126,6 +126,16 @@ struct MainView: View {
         window.makeKeyAndOrderFront(nil)
     }
 
+    private func openScheduleHistory(_ schedule: Schedule) {
+        let historyView = HistoryView(schedule: schedule)
+            .environmentObject(scheduleStore)
+        let controller = NSHostingController(rootView: historyView)
+        let window = NSWindow(contentViewController: controller)
+        window.title = "History — \(schedule.name)"
+        window.setContentSize(NSSize(width: 750, height: 550))
+        window.makeKeyAndOrderFront(nil)
+    }
+
     private func openLogViewer(scheduleId: UUID, name: String) {
         let logView = LogViewerView(scheduleId: scheduleId, scheduleName: name)
             .environmentObject(appVM.logService)

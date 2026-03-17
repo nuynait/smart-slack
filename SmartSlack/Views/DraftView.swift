@@ -105,7 +105,9 @@ struct DraftView: View {
             Label("Draft Reply", systemImage: "pencil.and.outline")
                 .font(.headline)
 
-            if let draft = session.draftReply {
+            if isBackgroundProcessing {
+                // Hide stale draft while rewrite/active reply is running in background
+            } else if let draft = session.draftReply {
                 Text(draft)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)

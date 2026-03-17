@@ -145,12 +145,29 @@ struct ScheduleDetailView: View {
             }
 
             Button {
+                openScheduleHistory()
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+            }
+            .help("View history")
+
+            Button {
                 showEditSheet = true
             } label: {
                 Image(systemName: "pencil")
             }
             .help("Edit schedule (⌘E)")
         }
+    }
+
+    private func openScheduleHistory() {
+        let historyView = HistoryView(schedule: schedule)
+            .environmentObject(scheduleStore)
+        let controller = NSHostingController(rootView: historyView)
+        let window = NSWindow(contentViewController: controller)
+        window.title = "History — \(schedule.name)"
+        window.setContentSize(NSSize(width: 750, height: 550))
+        window.makeKeyAndOrderFront(nil)
     }
 
     private func resolveAllUserNames() {

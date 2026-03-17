@@ -2,12 +2,23 @@ import SwiftUI
 
 struct HistoryView: View {
     @EnvironmentObject var scheduleStore: ScheduleStore
+    let schedule: Schedule?
     @State private var search = ""
     @State private var currentPage = 0
     private let pageSize = 20
 
+    init(schedule: Schedule? = nil) {
+        self.schedule = schedule
+    }
+
     private var allEntries: [HistoryEntry] {
-        scheduleStore.schedules.flatMap { schedule in
+        let sources: [Schedule]
+        if let schedule {
+            sources = [scheduleStore.schedule(byId: schedule.id) ?? schedule]
+        } else {
+            sources = scheduleStore.schedules
+        }
+        return sources.flatMap { schedule in
             schedule.sessions
                 .filter { $0.finalAction != .pending && $0.finalAction != .skipped }
                 .map { HistoryEntry(schedule: schedule, session: $0) }
@@ -41,6 +52,21 @@ struct HistoryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Title bar for per-schedule mode
+            if let schedule {
+                HStack {
+                    Label(schedule.name, systemImage: scheduleIcon(schedule))
+                        .font(.headline)
+                    Text(schedule.channelName)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(12)
+                .background(.quaternary)
+                Divider()
+            }
+
             // Search bar
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -74,7 +100,7 @@ struct HistoryView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(pagedEntries) { entry in
-                            HistoryEntryRow(entry: entry)
+                            HistoryEntryRow(entry: entry, showScheduleInfo: schedule == nil)
                         }
                     }
                     .padding()
@@ -116,6 +142,15 @@ struct HistoryView: View {
         }
         .frame(minWidth: 700, minHeight: 500)
     }
+
+    private func scheduleIcon(_ schedule: Schedule) -> String {
+        switch schedule.type {
+        case .channel: return "number"
+        case .thread: return "bubble.left.and.bubble.right"
+        case .dm: return "person"
+        case .dmgroup: return "person.3"
+        }
+    }
 }
 
 // MARK: - Data
@@ -130,6 +165,7 @@ struct HistoryEntry: Identifiable {
 
 private struct HistoryEntryRow: View {
     let entry: HistoryEntry
+    let showScheduleInfo: Bool
 
     private static let timestampFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -143,12 +179,14 @@ private struct HistoryEntryRow: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header
             HStack {
-                Label(entry.schedule.name, systemImage: channelIcon)
-                    .font(.headline)
+                if showScheduleInfo {
+                    Label(entry.schedule.name, systemImage: channelIcon)
+                        .font(.headline)
 
-                Text(entry.schedule.channelName)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    Text(entry.schedule.channelName)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
 
