@@ -21,6 +21,8 @@ struct ScheduleDetailView: View {
     @State private var sendTargetDraft = ""
     @State private var showImagePreview = false
     @State private var imagePreviewIndex = 0
+    @State private var conversationPage = 0
+    @AppStorage("conversationPageSize") private var pageSize = 20
 
     var body: some View {
         contentView
@@ -46,7 +48,10 @@ struct ScheduleDetailView: View {
             )) {
                 AddScheduleFromLinkView(initialLink: monitorThreadLink ?? "", initialAsThread: true)
             }
-            .task(id: schedule.id) { resolveAllUserNames() }
+            .task(id: schedule.id) {
+                conversationPage = 0
+                resolveAllUserNames()
+            }
             .onChange(of: schedule.sessions.count) { _, _ in resolveAllUserNames() }
             .onChange(of: schedule.pendingMessages.count) { _, _ in resolveAllUserNames() }
             .modifier(KeyboardNavModifier(
@@ -433,15 +438,15 @@ struct ScheduleDetailView: View {
             // Skipped ticks indicator
             if schedulerEngine.skippedTicks.contains(schedule.id) {
                 HStack(spacing: 6) {
-                    Image(systemName: "clock.badge.exclamationmark.fill")
-                        .foregroundStyle(.orange)
+                    Image(systemName: "clock.arrow.2.circlepath")
+                        .foregroundStyle(.teal)
                     Text("New messages waiting — resolve draft to process")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.teal)
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.orange.opacity(0.08))
+                .background(.teal.opacity(0.08))
                 .cornerRadius(6)
             }
 
@@ -487,16 +492,30 @@ struct ScheduleDetailView: View {
             }
 
             // Conversation (newest on top)
-            let messages = buildConversationMessages()
+            let allMessages = buildConversationMessages()
             let latestIds = buildLatestMessageIds()
-            let imageIndexMap = buildImageIndexMap(from: messages)
-            if !messages.isEmpty {
-                sectionHeader("Conversation", icon: "bubble.left.and.bubble.right")
+            let imageIndexMap = buildImageIndexMap(from: allMessages)
+            if !allMessages.isEmpty {
+                let totalPages = max(1, Int(ceil(Double(allMessages.count) / Double(pageSize))))
+                let safeCurrentPage = min(conversationPage, totalPages - 1)
+                let start = safeCurrentPage * pageSize
+                let end = min(start + pageSize, allMessages.count)
+                let pagedMessages = Array(allMessages[start..<end])
+
+                HStack {
+                    sectionHeader("Conversation", icon: "bubble.left.and.bubble.right")
+                    Spacer()
+                    if totalPages > 1 {
+                        conversationPagination(total: allMessages.count, totalPages: totalPages, currentPage: safeCurrentPage)
+                    }
+                }
+
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                    ForEach(Array(pagedMessages.enumerated()), id: \.element.id) { index, message in
+                        let globalIndex = start + index
                         let isLatest = latestIds.contains(message.ts ?? "")
                         let isOwner = message.user == appVM.slackUserId
-                        let nextIsLatest = index + 1 < messages.count ? latestIds.contains(messages[index + 1].ts ?? "") : false
+                        let nextIsLatest = globalIndex + 1 < allMessages.count ? latestIds.contains(allMessages[globalIndex + 1].ts ?? "") : false
                         let isLastNew = isLatest && !nextIsLatest
 
                         messageRow(message: message, isLatest: isLatest, isOwner: isOwner, imageIndexMap: imageIndexMap)
@@ -514,6 +533,10 @@ struct ScheduleDetailView: View {
                     if let userId = colorPickerUserId {
                         userColorPicker(userId: userId)
                     }
+                }
+
+                if totalPages > 1 {
+                    conversationPagination(total: allMessages.count, totalPages: totalPages, currentPage: safeCurrentPage)
                 }
             }
         }
@@ -763,6 +786,37 @@ struct ScheduleDetailView: View {
                     .stroke(Color.gray.opacity(0.3), lineWidth: 1)
             )
         }
+    }
+
+    private func conversationPagination(total: Int, totalPages: Int, currentPage: Int) -> some View {
+        HStack(spacing: 8) {
+            Text("\(total) messages")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button {
+                conversationPage = max(0, currentPage - 1)
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(currentPage == 0)
+            .buttonStyle(.plain)
+
+            Text("Page \(currentPage + 1) / \(totalPages)")
+                .font(.caption)
+                .frame(minWidth: 70)
+
+            Button {
+                conversationPage = min(totalPages - 1, currentPage + 1)
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(currentPage >= totalPages - 1)
+            .buttonStyle(.plain)
+        }
+        .font(.caption)
     }
 
     private func sectionHeader(_ title: String, icon: String) -> some View {

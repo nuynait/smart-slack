@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var keyboardNav: KeyboardNavigationState
     @State private var showPromptManager = false
     @AppStorage("showNotificationModeInSidebar") private var showNotificationMode = false
+    @AppStorage("conversationPageSize") private var conversationPageSize = 20
 
     var body: some View {
         ScrollView {
@@ -85,6 +86,21 @@ struct SettingsView: View {
                     Toggle("Show notification mode in sidebar", isOn: $showNotificationMode)
 
                     Text("Show an icon next to each schedule indicating its notification mode (Notification, Force Popup, or Quiet).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text("Conversation page size")
+                        Spacer()
+                        Picker("", selection: $conversationPageSize) {
+                            Text("20").tag(20)
+                            Text("50").tag(50)
+                            Text("100").tag(100)
+                        }
+                        .frame(width: 100)
+                    }
+
+                    Text("Number of messages shown per page in the conversation view.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

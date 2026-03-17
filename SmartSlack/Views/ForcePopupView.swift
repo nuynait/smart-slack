@@ -17,6 +17,8 @@ struct ForcePopupView: View {
     @State private var colorPickerUserId: String?
     @State private var showImagePreview = false
     @State private var imagePreviewIndex = 0
+    @State private var conversationPage = 0
+    @AppStorage("conversationPageSize") private var pageSize = 20
 
     private var autoSendCountdown: Int {
         schedulerEngine.autoSendCountdowns[schedule.id] ?? 10
@@ -65,15 +67,15 @@ struct ForcePopupView: View {
                     // Skipped ticks indicator
                     if schedulerEngine.skippedTicks.contains(schedule.id) {
                         HStack(spacing: 6) {
-                            Image(systemName: "clock.badge.exclamationmark.fill")
-                                .foregroundStyle(.orange)
+                            Image(systemName: "clock.arrow.2.circlepath")
+                                .foregroundStyle(.teal)
                             Text("New messages waiting — resolve draft to process")
                                 .font(.caption.bold())
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.teal)
                         }
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.orange.opacity(0.08))
+                        .background(.teal.opacity(0.08))
                         .cornerRadius(6)
                     }
 
@@ -119,16 +121,30 @@ struct ForcePopupView: View {
                     }
 
                     // Conversation (color-coded)
-                    let messages = conversationMessages(from: activeSchedule)
+                    let allMessages = conversationMessages(from: activeSchedule)
                     let latestIds = latestMessageIds(from: activeSchedule)
-                    let imageIndexMap = buildImageIndexMap(from: messages)
-                    if !messages.isEmpty {
-                        sectionHeader("Conversation", icon: "bubble.left.and.bubble.right")
+                    let imageIndexMap = buildImageIndexMap(from: allMessages)
+                    if !allMessages.isEmpty {
+                        let totalPages = max(1, Int(ceil(Double(allMessages.count) / Double(pageSize))))
+                        let safeCurrentPage = min(conversationPage, totalPages - 1)
+                        let start = safeCurrentPage * pageSize
+                        let end = min(start + pageSize, allMessages.count)
+                        let pagedMessages = Array(allMessages[start..<end])
+
+                        HStack {
+                            sectionHeader("Conversation", icon: "bubble.left.and.bubble.right")
+                            Spacer()
+                            if totalPages > 1 {
+                                conversationPagination(total: allMessages.count, totalPages: totalPages, currentPage: safeCurrentPage)
+                            }
+                        }
+
                         LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            ForEach(Array(pagedMessages.enumerated()), id: \.element.id) { index, message in
+                                let globalIndex = start + index
                                 let isLatest = latestIds.contains(message.ts ?? "")
                                 let isOwner = message.user == appVM.slackUserId
-                                let nextIsLatest = index + 1 < messages.count ? latestIds.contains(messages[index + 1].ts ?? "") : false
+                                let nextIsLatest = globalIndex + 1 < allMessages.count ? latestIds.contains(allMessages[globalIndex + 1].ts ?? "") : false
                                 let isLastNew = isLatest && !nextIsLatest
 
                                 messageRow(message: message, isLatest: isLatest, isOwner: isOwner, imageIndexMap: imageIndexMap)
@@ -146,6 +162,10 @@ struct ForcePopupView: View {
                             if let userId = colorPickerUserId {
                                 userColorPicker(userId: userId)
                             }
+                        }
+
+                        if totalPages > 1 {
+                            conversationPagination(total: allMessages.count, totalPages: totalPages, currentPage: safeCurrentPage)
                         }
                     }
                 }
@@ -438,6 +458,37 @@ struct ForcePopupView: View {
     }
 
     // MARK: - Helpers
+
+    private func conversationPagination(total: Int, totalPages: Int, currentPage: Int) -> some View {
+        HStack(spacing: 8) {
+            Text("\(total) messages")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button {
+                conversationPage = max(0, currentPage - 1)
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(currentPage == 0)
+            .buttonStyle(.plain)
+
+            Text("Page \(currentPage + 1) / \(totalPages)")
+                .font(.caption)
+                .frame(minWidth: 70)
+
+            Button {
+                conversationPage = min(totalPages - 1, currentPage + 1)
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(currentPage >= totalPages - 1)
+            .buttonStyle(.plain)
+        }
+        .font(.caption)
+    }
 
     private func sectionHeader(_ title: String, icon: String) -> some View {
         Label(title, systemImage: icon)

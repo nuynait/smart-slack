@@ -100,7 +100,7 @@ struct ActiveReplyView: View {
                     }
                     .buttonStyle(.primary)
                     .disabled(prompt.isEmpty || isGenerating)
-                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.return, modifiers: .command)
                 }
             }
             .padding(24)
@@ -115,6 +115,7 @@ struct ActiveReplyView: View {
     }
 
     private func generateReply() async {
+        isPromptFocused = false
         isGenerating = true
         error = nil
 

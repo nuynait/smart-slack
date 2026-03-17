@@ -112,7 +112,7 @@ struct RewriteOverlay: View {
                     }
                     .buttonStyle(.primary)
                     .disabled(rewritePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRewriting)
-                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.return, modifiers: .command)
                 }
             }
             .padding(24)
@@ -127,6 +127,7 @@ struct RewriteOverlay: View {
     }
 
     private func rewrite() async {
+        isPromptFocused = false
         isRewriting = true
         error = nil
 

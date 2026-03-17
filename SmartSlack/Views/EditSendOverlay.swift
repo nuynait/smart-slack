@@ -100,7 +100,7 @@ struct EditSendOverlay: View {
                     }
                     .buttonStyle(.primary)
                     .disabled(draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
-                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.return, modifiers: .command)
                 }
             }
             .padding(24)
@@ -115,6 +115,7 @@ struct EditSendOverlay: View {
     }
 
     private func send() async {
+        isTextFocused = false
         if schedule.type != .thread {
             // Route through send target picker
             sendTargetDraft = draftText
