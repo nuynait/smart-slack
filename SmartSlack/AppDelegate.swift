@@ -236,6 +236,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         case "i":
             keyboardNav.ignoreDraft = true
             return nil
+        case "s":
+            keyboardNav.toggleSidebar = true
+            return nil
         case "d":
             keyboardNav.deleteSelectedSchedule = true
             return nil

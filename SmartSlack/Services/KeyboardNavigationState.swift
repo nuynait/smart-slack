@@ -24,6 +24,7 @@ final class KeyboardNavigationState: ObservableObject {
     @Published var editAndSend = false
     @Published var rewriteDraft = false
     @Published var ignoreDraft = false
+    @Published var toggleSidebar = false
 
     // Image preview
     @Published var isInImagePreview = false

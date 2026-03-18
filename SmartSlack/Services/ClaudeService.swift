@@ -412,6 +412,7 @@ enum ClaudeService {
 
                 process.executableURL = URL(fileURLWithPath: Constants.claudePath)
                 process.arguments = ["--print", "--output-format", "text", "--allowedTools", "Write,Read,Bash"]
+                process.currentDirectoryURL = Constants.schedulerDir(for: scheduleId)
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
                 process.standardInput = stdinPipe

@@ -24,6 +24,7 @@ struct KeyboardCheatsheetView: View {
                         ("Move up", ["k"]),
                         ("Tab left", ["h"]),
                         ("Tab right", ["l"]),
+                        ("Toggle sidebar", ["s"]),
                     ]
                 }
 

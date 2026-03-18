@@ -23,6 +23,18 @@ struct MainView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 4) {
+                    Button {
+                        NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
+                    } label: {
+                        Image(systemName: "sidebar.left")
+                    }
+                    .help("Toggle sidebar (s)")
+                    KeyboardHintView(key: "s")
+                }
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     showAddFromLinkSheet = true
@@ -74,6 +86,12 @@ struct MainView: View {
             if let id = newId {
                 selectedScheduleId = id
                 appVM.notificationService.selectedScheduleIdFromNotification = nil
+            }
+        }
+        .onChange(of: keyboardNav.toggleSidebar) { _, toggle in
+            if toggle {
+                NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
+                keyboardNav.toggleSidebar = false
             }
         }
         .onChange(of: keyboardNav.createSchedule) { _, create in
