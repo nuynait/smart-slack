@@ -54,7 +54,7 @@ enum ClaudeService {
            \(hasFilter ? "- Write \"skip\" if the messages are not relevant based on the user instructions" : "- You MUST write \"respond\" since no filter is configured")
            - Write "respond" if the messages are relevant and warrant a reply
 
-        2. Write a brief summary of what was discussed to: \(summaryPath)
+        2. Write the summary of what was discussed to: \(summaryPath)
            - Use markdown formatting (headers, bullet points, bold, etc.) for readability
            - Write this even if you decided to skip (so the user can see what was discussed)
 
