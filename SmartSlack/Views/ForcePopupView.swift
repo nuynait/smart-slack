@@ -220,6 +220,19 @@ struct ForcePopupView: View {
             }
             resolveUserNames()
         }
+        // Dismiss popup if draft was resolved externally (from the main app detail view)
+        .onChange(of: currentSession?.finalAction) { _, action in
+            if let action, action != .pending,
+               !showSendTarget, !showEditSend, !showRewrite {
+                schedulerEngine.cancelAutoSend(for: schedule.id)
+                notificationService.dequeueCurrentPopup()
+            }
+        }
+        .onChange(of: schedulerEngine.backgroundTasks[schedule.id]?.id) { _, taskId in
+            if taskId != nil {
+                notificationService.dequeueCurrentPopup()
+            }
+        }
         // Enter key opens send-to picker (or sends directly for threads)
         .onKeyPress(.return) {
             let activeSession = currentSession ?? session
