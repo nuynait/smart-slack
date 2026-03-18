@@ -386,9 +386,10 @@ final class SchedulerEngine: ObservableObject {
 
         } catch {
             logService.log(.error, scheduleId: schedule.id, sessionId: sessionId, message: "Error: \(error.localizedDescription)")
-            var updated = schedule
+            var updated = scheduleStore.schedule(byId: schedule.id) ?? schedule
             updated.status = .failed
             updated.lastRun = Date()
+            updated.failureReason = error.localizedDescription
             scheduleStore.updateSchedule(updated)
             stopSchedule(schedule.id)
         }

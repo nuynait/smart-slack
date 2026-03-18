@@ -106,6 +106,9 @@ struct ScheduleDetailView: View {
             if let session = schedule.latestSession {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
+                        if schedule.status == .failed, let reason = schedule.failureReason {
+                            failureBanner(reason)
+                        }
                         headerSection
                         Divider()
                         sessionSection(session)
@@ -115,6 +118,9 @@ struct ScheduleDetailView: View {
             } else {
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 16) {
+                        if schedule.status == .failed, let reason = schedule.failureReason {
+                            failureBanner(reason)
+                        }
                         headerSection
                         Divider()
                     }
@@ -157,6 +163,7 @@ struct ScheduleDetailView: View {
                 Button {
                     var updated = schedule
                     updated.status = .active
+                    updated.failureReason = nil
                     scheduleStore.updateSchedule(updated)
                     schedulerEngine.startSchedule(updated)
                 } label: {
@@ -227,6 +234,26 @@ struct ScheduleDetailView: View {
     }
 
     // MARK: - Header
+
+    private func failureBanner(_ reason: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Schedule Failed")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.red)
+        .cornerRadius(8)
+    }
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {

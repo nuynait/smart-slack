@@ -377,10 +377,12 @@ enum ClaudeService {
                     try process.run()
                     stdinPipe.fileHandleForWriting.write(prompt.data(using: .utf8)!)
                     stdinPipe.fileHandleForWriting.closeFile()
-                    process.waitUntilExit()
 
                     let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
                     let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+
+                    process.waitUntilExit()
+
                     continuation.resume(returning: (
                         process.terminationStatus,
                         String(data: stdoutData, encoding: .utf8) ?? "",
@@ -420,10 +422,12 @@ enum ClaudeService {
                     stdinPipe.fileHandleForWriting.write(prompt.data(using: .utf8)!)
                     stdinPipe.fileHandleForWriting.closeFile()
 
-                    process.waitUntilExit()
-
+                    // Read pipes before waitUntilExit to avoid deadlock when output fills the pipe buffer
                     let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
                     let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+
+                    process.waitUntilExit()
+
                     let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
                     let stderr = String(data: stderrData, encoding: .utf8) ?? ""
 
@@ -435,7 +439,20 @@ enum ClaudeService {
         }
 
         guard result.status == 0 else {
-            throw ClaudeError.processError("Claude exited with status \(result.status): \(result.stderr)")
+            // Write debug files for inspection
+            try? prompt.write(to: dir.appendingPathComponent("debug_prompt.txt"), atomically: true, encoding: .utf8)
+            try? result.stdout.write(to: dir.appendingPathComponent("debug_stdout.txt"), atomically: true, encoding: .utf8)
+            try? result.stderr.write(to: dir.appendingPathComponent("debug_stderr.txt"), atomically: true, encoding: .utf8)
+
+            let stderrTrimmed = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stdoutTrimmed = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            var detail = "Claude exited with status \(result.status)"
+            detail += "\n  Prompt length: \(prompt.count) chars"
+            detail += "\n  Command: \(Constants.claudePath) --print --output-format text --allowedTools Write,Read,Bash"
+            if !stderrTrimmed.isEmpty { detail += "\n  stderr: \(String(stderrTrimmed.prefix(500)))" }
+            if !stdoutTrimmed.isEmpty { detail += "\n  stdout: \(String(stdoutTrimmed.prefix(500)))" }
+            detail += "\n  Debug files saved to: \(dir.path)"
+            throw ClaudeError.processError(detail)
         }
 
         // Read the files Claude wrote

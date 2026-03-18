@@ -98,6 +98,7 @@ struct Schedule: Codable, Identifiable, Hashable {
     var autoSend: Bool
     var signDrafts: Bool
     var alwaysRun: Bool
+    var failureReason: String?
 
     /// Latest session that was processed by Claude (has a summary).
     var latestSession: Session? {
@@ -110,7 +111,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         return latest.finalAction == .pending
     }
 
-    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification, skipNotificationMode: NotificationMode = .quiet, filterSummary: String? = nil, memorySummary: String? = nil, autoSend: Bool = false, signDrafts: Bool = true, alwaysRun: Bool = false) {
+    init(id: UUID, name: String, type: ScheduleType, channelId: String, threadTs: String?, channelName: String, prompt: String, intervalSeconds: Int, status: ScheduleStatus, createdAt: Date, lastRun: Date?, lastMessageTs: String?, sessions: [Session], pendingMessages: [SlackMessage] = [], initialMessageCount: Int = 5, notificationMode: NotificationMode = .macosNotification, skipNotificationMode: NotificationMode = .quiet, filterSummary: String? = nil, memorySummary: String? = nil, autoSend: Bool = false, signDrafts: Bool = true, alwaysRun: Bool = false, failureReason: String? = nil) {
         self.id = id
         self.name = name
         self.type = type
@@ -133,6 +134,7 @@ struct Schedule: Codable, Identifiable, Hashable {
         self.autoSend = autoSend
         self.signDrafts = signDrafts
         self.alwaysRun = alwaysRun
+        self.failureReason = failureReason
     }
 
     init(from decoder: Decoder) throws {
@@ -159,5 +161,6 @@ struct Schedule: Codable, Identifiable, Hashable {
         autoSend = try container.decodeIfPresent(Bool.self, forKey: .autoSend) ?? false
         signDrafts = try container.decodeIfPresent(Bool.self, forKey: .signDrafts) ?? true
         alwaysRun = try container.decodeIfPresent(Bool.self, forKey: .alwaysRun) ?? false
+        failureReason = try container.decodeIfPresent(String.self, forKey: .failureReason)
     }
 }
